@@ -145,6 +145,57 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # 分支构建也自动发一个滚动 Release：主页与 releases 页直接可见，不必再翻 Actions 找产物
+  publish-latest:
+    name: 发布最新构建
+    needs: [verify, build-apks]
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: 下载 Release APK
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: Eta-v*.apk
+          merge-multiple: true
+          path: ${{ runner.temp }}/release
+
+      # 滚动 tag：每次覆盖同名 Release，主页始终只挂最新一个，不会堆出一串历史
+      - name: 发布滚动 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          release_apks=()
+          for f in "$RUNNER_TEMP"/release/Eta-v*.apk; do
+            [[ "$(basename "$f")" == *-debug* ]] && continue
+            release_apks+=("$f")
+          done
+          if [[ ${#release_apks[@]} -ne 1 ]]; then
+            echo "::error::Release APK 数量异常（${#release_apks[@]}）。"
+            exit 1
+          fi
+          apk="${release_apks[0]}"
+          # 形如 Eta-v3.4.0+6d7cfb3.apk，去掉前缀与后缀就是版本名
+          version="$(basename "$apk" .apk)"
+          version="${version#Eta-}"
+          short_sha="${GITHUB_SHA::7}"
+          notes="$(printf '%s\n%s\n%s' \
+            "由 main 分支自动构建：提交 ${short_sha}，Lint 与单元测试全部通过。" \
+            "包名 io.github.celld3.eta，可与原版 Eta 共存。" \
+            "首次安装需重新授权 Root、无障碍与悬浮窗。")"
+          gh release delete latest-build --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create latest-build "$apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$version" \
+            --notes "$notes" \
+            --latest
+
   # 构建 job 持有签名 Secrets，写 Release 的权限单独放在这里，且只在发版标签上运行
   draft-release:
     name: 创建 Release 草稿

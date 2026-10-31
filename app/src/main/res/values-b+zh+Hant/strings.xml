@@ -1362,4 +1362,13 @@
   <string name="chat_queue_remove">移除排隊訊息</string>
   <string name="chat_queue_images_only">[%1$d 張圖片]</string>
   <string name="chat_queue_files_only">[%1$d 個檔案]</string>
+    <string name="overlay_choice_dismiss">先不選</string>
+    <string name="overlay_choice_recommended">推薦</string>
+    <string name="overlay_copy_title">複製這段</string>
+    <string name="overlay_copy_action">複製</string>
+    <string name="overlay_copy_close">關閉</string>
+    <string name="tool_ask_choice">選項卡片</string>
+    <string name="tool_ask_choice_description">需要使用者拍板時彈出小卡片，2~4 個可點選項，點完直接回傳結果，不打斷目前頁面。</string>
+    <string name="tool_copy_to_clipboard">複製卡片</string>
+    <string name="tool_copy_to_clipboard_description">把一段正文彈成小卡片，一鍵複製，不佔全螢幕、不切應用。</string>
 </resources>

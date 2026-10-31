@@ -83,7 +83,7 @@ internal object CanvasRoutingPolicy {
         requested: RequestedDisplay = RequestedDisplay.AUTO,
         targetPackage: String? = null,
         foregroundPackageOnMainDisplay: String? = null,
-        ownPackage: String = "io.github.mangi.eta",
+        ownPackage: String = "io.github.celld3.eta",
     ): CanvasTarget {
         if (!virtualDisplayEnabled || !backendAvailable) return CanvasTarget.MAIN_DISPLAY
         if (requested == RequestedDisplay.MAIN) return CanvasTarget.MAIN_DISPLAY

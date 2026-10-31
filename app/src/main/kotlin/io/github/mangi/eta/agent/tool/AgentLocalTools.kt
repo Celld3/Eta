@@ -24,7 +24,11 @@ import io.github.mangi.eta.agent.model.AgentScreenObservationContract
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.model.AgentTerminalToolCatalog
 import io.github.mangi.eta.agent.model.AgentFileToolCatalog
+import io.github.mangi.eta.agent.overlay.AgentChoiceOption
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
+import io.github.mangi.eta.agent.runtime.AgentInteraction
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
 import io.github.mangi.eta.agent.overlay.GestureIndicator
 import io.github.mangi.eta.agent.runtime.AgentAppContext
@@ -238,6 +242,8 @@ internal class AgentLocalTools(
                     publishedObservation.set(PublishedObservation())
                     textResult(presentToUser(args))
                 }
+                "ask_choice" -> textResult(askChoice(args))
+                "copy_to_clipboard" -> textResult(copyToClipboard(args))
                 "open_uri" -> {
                     publishedObservation.set(PublishedObservation())
                     textResult(openUri(args))
@@ -321,6 +327,92 @@ internal class AgentLocalTools(
                 result.copy(sensitive = true)
             }
         }
+
+    /**
+     * 让用户在浮窗卡片上点选。
+     *
+     * 运行本身在 IO 线程阻塞等待（AgentLoop 已把工具调用放进 Dispatchers.IO），
+     * 所以这里可以直接等结果而不占主线程；卡片起不来时退回文字提问，由模型自己接着问。
+     */
+    private fun askChoice(args: JSONObject): String {
+        val title = args.optString("title").trim()
+        if (title.isEmpty()) throw InvalidToolArgumentException("title 不能为空")
+        val rawOptions = args.optJSONArray("options")
+            ?: throw InvalidToolArgumentException("options 必须是 2~4 项的数组")
+        if (rawOptions.length() < 2 || rawOptions.length() > 4) {
+            throw InvalidToolArgumentException("options 需要 2~4 项，当前 ${rawOptions.length()} 项")
+        }
+        var recommendedSeen = false
+        val options = (0 until rawOptions.length()).mapNotNull { index ->
+            val item = rawOptions.optJSONObject(index) ?: return@mapNotNull null
+            val optionTitle = item.optString("title").trim().take(AgentChoiceMaxTextChars)
+            if (optionTitle.isEmpty()) return@mapNotNull null
+            val recommended = item.optBoolean("recommended", false) && !recommendedSeen
+            if (recommended) recommendedSeen = true
+            AgentChoiceOption(
+                title = optionTitle,
+                description = item.optString("description").trim().take(AgentChoiceMaxTextChars),
+                recommended = recommended,
+            )
+        }
+        if (options.size < 2) throw InvalidToolArgumentException("至少需要 2 个非空选项")
+        val seconds = args.optInt("timeout_seconds", 0)
+        val timeoutMs = if (seconds > 0) {
+            (seconds * 1_000L).coerceIn(AgentChoiceRequest.MinTimeoutMs, AgentChoiceRequest.MaxTimeoutMs)
+        } else {
+            AgentChoiceRequest.DefaultTimeoutMs
+        }
+        val request = AgentChoiceRequest(
+            title = title.take(AgentChoiceMaxTextChars),
+            subtitle = args.optString("subtitle").trim().take(AgentChoiceMaxTextChars * 2),
+            options = options,
+            timeoutMs = timeoutMs,
+        )
+        return when (val outcome = AgentInteraction.requestChoice(request) { closed.get() }) {
+            is AgentChoiceResult.Selected -> JSONObject()
+                .put("ok", true)
+                .put("index", outcome.index)
+                .put("choice", outcome.title)
+                .put("answered", true)
+                .toString()
+            AgentChoiceResult.Cancelled -> JSONObject()
+                .put("ok", false)
+                .put("code", "CANCELLED")
+                .put("answered", true)
+                .put("message", "用户关闭了选项卡片，没有选择任何一项；按推荐项或最稳妥的方案继续，并在最终答复里说明这一点")
+                .toString()
+            AgentChoiceResult.TimedOut -> JSONObject()
+                .put("ok", false)
+                .put("code", "TIMED_OUT")
+                .put("answered", false)
+                .put("message", "等待超时，用户没有点选；按推荐项继续推进，不要重复弹同一张卡片")
+                .toString()
+            AgentChoiceResult.Unavailable -> JSONObject()
+                .put("ok", false)
+                .put("code", "CHOICE_CARD_UNAVAILABLE")
+                .put("answered", false)
+                .put("message", "当前无法显示选项卡片（浮窗未就绪或已有另一张卡片在等）；改用文字提问")
+                .toString()
+        }
+    }
+
+    /** 复制卡片：只负责把内容弹出来，用户点不点都不影响任务继续。 */
+    private fun copyToClipboard(args: JSONObject): String {
+        val text = args.optString("text").takeIf(String::isNotBlank)
+            ?: throw InvalidToolArgumentException("text 不能为空")
+        val title = args.optString("title").trim().take(AgentChoiceMaxTextChars)
+        val shown = AgentInteraction.showCopyCard(title, text)
+        return JSONObject()
+            .put("ok", true)
+            .put("card_shown", shown)
+            .put("chars", text.length)
+            .put("message", if (shown) {
+                "已弹出复制卡片，用户点一下就写入剪贴板；不要再用 set_clipboard 重复写入"
+            } else {
+                "复制卡片未能显示；需要落到剪贴板时改用 set_clipboard"
+            })
+            .toString()
+    }
 
     private fun executeForegroundIntent(toolName: String, action: () -> JSONObject): JSONObject {
         fun execute(): JSONObject {
@@ -1674,6 +1766,9 @@ internal class AgentLocalTools(
     )
 
     private companion object {
+        /** 卡片上的一行文字不适合再长；超出部分模型应写进正文。 */
+        const val AgentChoiceMaxTextChars = 120
+
         val DEVICE_DIRECT_TOOL_NAMES = io.github.mangi.eta.agent.model.AgentPhoneToolCatalog.direct + setOf(
             "set_alarm",
             "set_timer",

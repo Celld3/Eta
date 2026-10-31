@@ -1450,4 +1450,13 @@
   <string name="chat_queue_remove">移除排队消息</string>
   <string name="chat_queue_images_only">[%1$d 张图片]</string>
   <string name="chat_queue_files_only">[%1$d 个文件]</string>
+    <string name="overlay_choice_dismiss">Cancel</string>
+    <string name="overlay_choice_recommended">Suggested</string>
+    <string name="overlay_copy_title">Copy this</string>
+    <string name="overlay_copy_action">Copy</string>
+    <string name="overlay_copy_close">Close</string>
+    <string name="tool_ask_choice">Ask with options</string>
+    <string name="tool_ask_choice_description">Show a small card with 2-4 tappable options when the answer really depends on the user; the tap returns as the tool result.</string>
+    <string name="tool_copy_to_clipboard">Copy card</string>
+    <string name="tool_copy_to_clipboard_description">Pop a small card with text and a one-tap copy button, without taking over the screen.</string>
 </resources>

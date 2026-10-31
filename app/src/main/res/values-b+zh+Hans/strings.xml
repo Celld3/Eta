@@ -1431,4 +1431,13 @@
   <string name="chat_queue_remove">移除排队消息</string>
   <string name="chat_queue_images_only">[%1$d 张图片]</string>
   <string name="chat_queue_files_only">[%1$d 个文件]</string>
+    <string name="overlay_choice_dismiss">先不选</string>
+    <string name="overlay_choice_recommended">推荐</string>
+    <string name="overlay_copy_title">复制这段</string>
+    <string name="overlay_copy_action">复制</string>
+    <string name="overlay_copy_close">关闭</string>
+    <string name="tool_ask_choice">选项卡片</string>
+    <string name="tool_ask_choice_description">需要用户拍板时弹出小卡片，2~4 个可点选项，点完直接回传结果，不打断当前页面。</string>
+    <string name="tool_copy_to_clipboard">复制卡片</string>
+    <string name="tool_copy_to_clipboard_description">把一段正文弹成小卡片，一键复制，不占全屏、不切应用。</string>
 </resources>

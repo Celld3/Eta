@@ -35,6 +35,8 @@ internal class AgentTraceFormatter {
             "search_apps" -> summarizeQueryArguments("搜索应用", toolCall.argumentsJson)
             "launch_app" -> "打开应用"
             "present_to_user" -> "呈现到主屏"
+            "ask_choice" -> summarizeChoiceArguments(toolCall.argumentsJson)
+            "copy_to_clipboard" -> summarizeTextLength("复制到剪贴板", toolCall.argumentsJson, "text")
             "get_current_context" -> "读取时间与位置"
             "observe_screen" -> summarizeObservationArguments(toolCall.argumentsJson)
             "tap" -> summarizePointArguments("点击屏幕", toolCall.argumentsJson)
@@ -241,6 +243,18 @@ internal class AgentTraceFormatter {
                 if (options.includeUiTree) add("含界面树")
             }.joinToString(" · ")
         }.getOrDefault("观察屏幕")
+
+    /** 卡片标题就是要问的事，摘要直接复用它，和浮窗上看到的文字一致。 */
+    private fun summarizeChoiceArguments(argumentsJson: String): String =
+        runCatching {
+            val title = JSONObject(argumentsJson).optString("title").trim()
+            val count = JSONObject(argumentsJson).optJSONArray("options")?.length() ?: 0
+            when {
+                title.isEmpty() -> "请求用户选择"
+                count > 0 -> "$title · $count 个选项"
+                else -> title
+            }
+        }.getOrDefault("请求用户选择")
 
     private fun summarizeMemoryGetArguments(argumentsJson: String): String =
         runCatching {

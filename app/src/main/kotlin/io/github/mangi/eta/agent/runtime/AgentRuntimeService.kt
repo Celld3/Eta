@@ -1,6 +1,10 @@
 package io.github.mangi.eta.agent.runtime
 
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.RejectedExecutionException
 import android.app.Service
 import android.app.ActivityOptions
@@ -18,6 +22,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
@@ -46,6 +51,10 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayGlow
 import io.github.mangi.eta.agent.overlay.ScreenCornerRadii
 import io.github.mangi.eta.agent.overlay.AgentOverlayCapsule
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
+import io.github.mangi.eta.agent.overlay.AgentChoiceCard
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.AgentChoiceResult
+import io.github.mangi.eta.agent.overlay.AgentCopyCard
 import io.github.mangi.eta.agent.overlay.AgentResultCard
 import io.github.mangi.eta.agent.overlay.AgentOverlayPhase
 import io.github.mangi.eta.agent.overlay.AgentOverlayState
@@ -78,7 +87,7 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  *
  * Hook 入口只发送请求和接收结果；模型调用、工具执行、运行状态浮窗都在本服务中完成。
  */
-internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegistryOwner {
+internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegistryOwner, AgentInteractionHost {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
@@ -106,6 +115,15 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var capsuleParams: WindowManager.LayoutParams? = null
     private var resultCardParams: WindowManager.LayoutParams? = null
     private var resultCardBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
+
+    /** 选择卡片的窗口；与结果卡片分开持有，避免任务收尾时被一起拆掉。 */
+    private var choiceView: ComposeView? = null
+    private var choiceWindowManager: WindowManager? = null
+    private var choiceBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
+    @Volatile private var choiceSession: ChoiceSession? = null
+    /** 复制卡片是与运行并行的轻量提示，只保留最新一张。 */
+    private var copyView: ComposeView? = null
+    private var copyWindowManager: WindowManager? = null
 
     /** 窗口只投影当前手机控制者；各运行的状态保留在自己的记录中。 */
     private val state = mutableStateOf(AgentOverlayState.Initial)
@@ -147,6 +165,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         AgentOverlayClearance.attach(clearanceHost)
+        AgentInteraction.attach(this)
         serviceScope.launch { guiControl.state.collect(::applyGuiControlState) }
         serviceScope.launch {
             VirtualDisplayController.snapshots.collect { snapshot ->
@@ -196,6 +215,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         resultIo.shutdownNow()
         mainHandler.removeCallbacksAndMessages(null)
         AgentOverlayClearance.detach(clearanceHost)
+        AgentInteraction.detach(this)
+        choiceSession?.finish(AgentChoiceResult.Unavailable)
+        choiceView?.let { view -> runCatching { choiceWindowManager?.removeView(view) } }
+        copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
+        unregisterChoiceBack()
+        choiceView = null
+        copyView = null
+        choiceSession = null
+        choiceWindowManager = null
+        copyWindowManager = null
         VirtualDisplayController.release(this)
         unregisterResultCardBack()
         resultCardView?.let { view -> runCatching { windowManager?.removeView(view) } }
@@ -924,7 +953,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         val owner = guiState.ownerRunId?.let(runs::get)
         if (owner != null && displayedRun !== owner) {
             bindDisplayedRun(owner)
-            AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.RUN_STARTED)
+            AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.TAP)
         }
         when {
             guiState.userPaused -> {
@@ -1393,6 +1422,249 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
     }
 
+    // ── 就地交互浮窗（选择卡片 / 复制卡片） ───────────────────────────────
+    //
+    // 模型提问时整轮正在阻塞等待工具结果，窗口只能在主线程建，结果必须回到调用线程；
+    // ChoiceSession 用 CountDownLatch 承担这次跨线程交接，并用超时兜住无人响应的场景。
+
+    override fun requestChoice(request: AgentChoiceRequest, isCancelled: () -> Boolean): AgentChoiceResult {
+        if (destroyed) return AgentChoiceResult.Unavailable
+        val wm = overlayWindowManagerOrNull() ?: return AgentChoiceResult.Unavailable
+        if (choiceSession != null) return AgentChoiceResult.Unavailable
+        val session = ChoiceSession(request)
+        val posted = CountDownLatch(1)
+        mainHandler.post {
+            if (destroyed || choiceSession != null) {
+                posted.countDown()
+                return@post
+            }
+            choiceSession = session
+            showChoiceCard(wm, session)
+            posted.countDown()
+        }
+        if (!posted.await(ChoicePostTimeoutMs, TimeUnit.MILLISECONDS)) {
+            mainHandler.post { if (choiceSession === session) dismantleChoiceCard(AgentChoiceResult.Unavailable) }
+            return AgentChoiceResult.Unavailable
+        }
+        if (!session.shown) return AgentChoiceResult.Unavailable
+        // 窗口侧已有看门狗；这里再兜一层，主线程被别的活占住时调用线程也不会永久挂住。
+        val guardMs = request.timeoutMs.coerceIn(
+            AgentChoiceRequest.MinTimeoutMs, AgentChoiceRequest.MaxTimeoutMs,
+        ) + ChoiceAwaitSlackMs
+        return try {
+            val awaited = session.await(guardMs, isCancelled)
+            // 用户点选与主动取消都会先摘窗并把 choiceSession 清空，这里的条件自然不成立；
+            // 只有运行被停止而用户还没回答时，卡片才仍挂在屏幕上，需要补一次收回。
+            val settled = awaited ?: AgentChoiceResult.TimedOut
+            mainHandler.post { if (choiceSession === session) dismantleChoiceCard(settled) }
+            settled
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            mainHandler.post { if (choiceSession === session) dismantleChoiceCard(AgentChoiceResult.Cancelled) }
+            AgentChoiceResult.Cancelled
+        }
+    }
+
+    override fun showCopyCard(title: String, content: String): Boolean {
+        if (destroyed || content.isBlank()) return false
+        val wm = if (Looper.myLooper() == Looper.getMainLooper()) {
+            overlayWindowManagerOrNull()
+        } else {
+            val holder = AtomicReference<WindowManager?>()
+            val posted = CountDownLatch(1)
+            mainHandler.post {
+                holder.set(overlayWindowManagerOrNull())
+                posted.countDown()
+            }
+            posted.await(CopyPostTimeoutMs, TimeUnit.MILLISECONDS)
+            holder.get()
+        } ?: return false
+        val added = if (Looper.myLooper() == Looper.getMainLooper()) {
+            showCopyOverlay(wm, title, content)
+        } else {
+            val result = AtomicBoolean(false)
+            val posted = CountDownLatch(1)
+            mainHandler.post {
+                result.set(showCopyOverlay(wm, title, content))
+                posted.countDown()
+            }
+            posted.await(CopyPostTimeoutMs, TimeUnit.MILLISECONDS)
+            result.get()
+        }
+        return added
+    }
+
+    /** 已就绪的窗口管理器；没有可用浮窗权限时返回 null，由调用方退化为文字交互。 */
+    private fun overlayWindowManagerOrNull(): WindowManager? {
+        windowManager?.let { return it }
+        if (AgentAccessibilityService.current() == null && !Settings.canDrawOverlays(this)) return null
+        val wm = overlayContext().getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return null
+        windowManager = wm
+        return wm
+    }
+
+    private fun showChoiceCard(wm: WindowManager, session: ChoiceSession) {
+        val card = createOverlayComposeView {
+            AgentChoiceCard(
+                request = session.request,
+                onSelect = { index ->
+                    val title = session.request.options.getOrNull(index)?.title.orEmpty()
+                    val result = if (index in session.request.options.indices) {
+                        AgentChoiceResult.Selected(index, title)
+                    } else {
+                        AgentChoiceResult.Cancelled
+                    }
+                    // 让选中态先亮一下再摘窗，否则点完卡片瞬间消失，用户不知道点中了哪个。
+                    // pending 先落：这 160ms 里按返回或超时都不能把已选中的结论改成取消。
+                    session.pending = result
+                    mainHandler.postDelayed({ dismantleChoiceCard(result) }, ChoiceConfirmDelayMs)
+                },
+                onDismiss = { dismantleChoiceCard(AgentChoiceResult.Cancelled) },
+            )
+        }
+        val lp = interactionCardLayoutParams()
+        val added = runCatching { wm.addView(card, lp) }
+        if (added.isFailure) {
+            AndroidAgentLogger.warnThrottled("runtime_choice_card_add_view_failed") {
+                "Agent runtime choice card addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
+            }
+            choiceSession = null
+            session.finish(AgentChoiceResult.Unavailable)
+            return
+        }
+        choiceView = card
+        choiceWindowManager = wm
+        registerChoiceBack(card)
+        card.requestFocus()
+        session.shown = true
+        session.startTimeout()
+        AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.TAP)
+    }
+
+    private fun showCopyOverlay(wm: WindowManager, title: String, content: String): Boolean {
+        copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
+        copyView = null
+        val card = createOverlayComposeView {
+            AgentCopyCard(
+                title = title,
+                content = content,
+                onDismiss = { removeCopyCard() },
+            )
+        }
+        val lp = interactionCardLayoutParams().apply {
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        }
+        val added = runCatching { wm.addView(card, lp) }
+        if (added.isFailure) {
+            AndroidAgentLogger.warnThrottled("runtime_copy_card_add_view_failed") {
+                "Agent runtime copy card addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
+            }
+            return false
+        }
+        copyView = card
+        copyWindowManager = wm
+        return true
+    }
+
+    private fun removeCopyCard() {
+        copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
+        copyView = null
+        copyWindowManager = null
+    }
+
+    /** 关窗与唤醒调用方是同一件事：先摘窗口再放行，调用方拿到的结论一定对应已消失的卡片。 */
+    private fun dismantleChoiceCard(result: AgentChoiceResult) {
+        val session = choiceSession ?: return
+        choiceSession = null
+        // 用户已经点过的选项优先于晚到的取消/超时。
+        val settledResult = session.pending ?: result
+        unregisterChoiceBack()
+        choiceView?.let { view -> runCatching { choiceWindowManager?.removeView(view) } }
+        choiceView = null
+        choiceWindowManager = null
+        session.finish(settledResult)
+    }
+
+    private fun registerChoiceBack(view: View) {
+        unregisterChoiceBack()
+        val dispatcher = view.findOnBackInvokedDispatcher() ?: return
+        val callback = OnBackInvokedCallback { dismantleChoiceCard(AgentChoiceResult.Cancelled) }
+        dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, callback)
+        choiceBack = dispatcher to callback
+    }
+
+    private fun unregisterChoiceBack() {
+        val (dispatcher, callback) = choiceBack ?: return
+        choiceBack = null
+        runCatching { dispatcher.unregisterOnBackInvokedCallback(callback) }
+    }
+
+    /** 与结果卡片同宽同底，但不吃掉半屏：窗口高度交给内容自己决定。 */
+    private fun interactionCardLayoutParams(): WindowManager.LayoutParams =
+        WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            x = 0
+            y = 0
+            windowAnimations = 0
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        }
+
+    /**
+     * 一次等待中的选择。
+     *
+     * 超时由看门狗任务在主线程触发，与用户点选共用 [finish] 的原子交接：谁先到达谁生效，
+     * 后到的完成不会覆盖结论，也不会把已经摘掉的窗口再摘一次。
+     */
+    private inner class ChoiceSession(val request: AgentChoiceRequest) {
+        private val latch = CountDownLatch(1)
+        private val settled = AtomicReference<AgentChoiceResult?>(null)
+        @Volatile var shown = false
+        /** 用户刚点下、窗口还没摘时的结论；摘窗时它优先于同时到达的取消与超时。 */
+        @Volatile var pending: AgentChoiceResult? = null
+        private var timeoutTask: Runnable? = null
+
+        /**
+         * 等待结论：正常返回结论；返回 null 表示 [guardMs] 内没人回答（按超时处理）；
+         * 返回 [AgentChoiceResult.Cancelled] 表示运行方已经停止，卡片要立刻收回。
+         */
+        fun await(guardMs: Long, isCancelled: () -> Boolean): AgentChoiceResult? {
+            val deadline = SystemClock.uptimeMillis() + guardMs
+            while (true) {
+                // 运行被停止时立刻收回卡片；结论与用户主动取消一致，都是「没有拿到选择」。
+                if (isCancelled()) return AgentChoiceResult.Cancelled
+                val remaining = deadline - SystemClock.uptimeMillis()
+                if (remaining <= 0) return null
+                if (latch.await(minOf(remaining, CancelPollMs), TimeUnit.MILLISECONDS)) {
+                    return settled.get() ?: AgentChoiceResult.Cancelled
+                }
+            }
+        }
+
+        fun startTimeout() {
+            val task = Runnable { dismantleChoiceCard(AgentChoiceResult.TimedOut) }
+            timeoutTask = task
+            mainHandler.postDelayed(task, request.timeoutMs.coerceIn(
+                AgentChoiceRequest.MinTimeoutMs, AgentChoiceRequest.MaxTimeoutMs,
+            ))
+        }
+
+        fun finish(result: AgentChoiceResult) {
+            if (!settled.compareAndSet(null, result)) return
+            timeoutTask?.let(mainHandler::removeCallbacks)
+            timeoutTask = null
+            latch.countDown()
+        }
+    }
+
     private fun resultCardWindowHeightPx(): Int =
         (resources.displayMetrics.heightPixels * RESULT_CARD_HEIGHT_RATIO).toInt()
 
@@ -1448,6 +1720,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun removeOverlayWindows() {
         mainHandler.removeCallbacksAndMessages(hideToken)
         mainHandler.removeCallbacks(restoreCapsule)
+        // 任务收尾时不能把还在等用户点选的卡片留在屏幕上，否则那个窗口再也没人关。
+        if (choiceSession != null) dismantleChoiceCard(AgentChoiceResult.Cancelled)
+        removeCopyCard()
         capsuleYielded.value = false
         capsuleView?.keepScreenOn = false
         unregisterResultCardBack()
@@ -1499,6 +1774,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val HIDE_DELAY_MS = 2_500L
         private const val RESULT_REVIEW_DELAY_MS = 120_000L
         private const val RESULT_CARD_HEIGHT_RATIO = 0.5f
+        private const val ChoicePostTimeoutMs = 3_000L
+        private const val CopyPostTimeoutMs = 1_500L
+        private const val ChoiceConfirmDelayMs = 160L
+        private const val ChoiceAwaitSlackMs = 15_000L
+        private const val CancelPollMs = 500L
         private const val RESULT_OPEN_REQUEST_CODE = 1108
         private const val CAPSULE_WINDOW_WIDTH_DP = 272
         private const val CAPSULE_MICRO_WINDOW_WIDTH_DP = 290

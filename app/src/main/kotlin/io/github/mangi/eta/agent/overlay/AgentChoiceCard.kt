@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.overlay
 
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -28,16 +29,19 @@ import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
@@ -83,31 +88,45 @@ internal sealed interface AgentChoiceResult {
 }
 
 /**
+ * 卡片收起的动画时长。窗口层要等这段动画放完再摘窗，
+ * 否则 removeView 会把最后一帧直接抹掉，看起来就是硬闪一下。
+ */
+internal const val InteractionCardExitMs = 190L
+
+/** 卡片收起与进场共用的进度：0 完全隐藏，1 完全就位。 */
+@Composable
+private fun rememberCardProgress(visible: Boolean, label: String): State<Float> =
+    animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        // 进场用弹簧，落位时有一点软着陆；收起用短促的减速曲线。
+        // 两段都只驱动一个进度值，透明度与缩放不会各自跑偏。
+        animationSpec = if (visible) {
+            spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+        } else {
+            tween(durationMillis = InteractionCardExitMs.toInt(), easing = FastOutLinearInEasing)
+        },
+        label = label,
+    )
+
+/**
  * 模型需要用户拍板时弹出的底部选择卡片。
  *
  * 与结果卡片共用同一套浮窗语汇：底部圆角面板、顶部抓手、窗口外触摸穿透。
  * 与结果卡片不同的是它必须被回答：卡片不会自动消失，只由点选、取消、返回或超时结束。
+ *
+ * [visible] 由窗口层驱动：置 false 后卡片先播收起动画，窗口层等
+ * [InteractionCardExitMs] 再摘窗，进出两侧都有完整的一帧序列。
  */
 @Composable
 internal fun AgentChoiceCard(
     request: AgentChoiceRequest,
+    visible: Boolean,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var entered by remember { mutableStateOf(false) }
     var chosenIndex by remember { mutableIntStateOf(-1) }
     var settled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { entered = true }
-    val alpha by animateFloatAsState(
-        targetValue = if (entered) 1f else 0f,
-        animationSpec = tween(180),
-        label = "choice_alpha",
-    )
-    val offset by animateFloatAsState(
-        targetValue = if (entered) 0f else 64f,
-        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
-        label = "choice_offset",
-    )
+    val progress by rememberCardProgress(visible, "choice_progress")
 
     // settled 先落，避免连点或点完立刻按返回把同一个结论回传两次。
     fun choose(index: Int) {
@@ -128,8 +147,13 @@ internal fun AgentChoiceCard(
                 .fillMaxWidth()
                 .heightIn(max = ChoiceCardMaxHeight)
                 .graphicsLayer {
-                    this.alpha = alpha
-                    translationY = offset
+                    // 浮窗高度就是卡片高度，任何位移都会被窗口边界裁掉一截，
+                    // 所以进出场只做缩放与透明度：从底边生长，收回时缩回底边。
+                    alpha = progress
+                    val scale = CardEnterExitScaleStart + (1f - CardEnterExitScaleStart) * progress
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0.5f, 1f)
                 }
                 .shadow(16.dp, RoundedCornerShape(ChoiceCardCorner), ambientColor = Color.Black.copy(alpha = 0.18f))
                 .clip(RoundedCornerShape(ChoiceCardCorner))
@@ -271,32 +295,26 @@ private fun ChoiceRow(
  * 复制卡片：模型把一段需要落地的正文交给用户时弹出，一键写剪贴板。
  *
  * 它不阻塞运行：用户不点也照样继续，卡片自己收起；点过之后按钮变成已复制再收起。
+ * 收起同样走窗口层的两段式：先播动画，再由窗口层摘窗。
  */
 @Composable
 internal fun AgentCopyCard(
     title: String,
     content: String,
+    visible: Boolean,
     onDismiss: () -> Unit,
 ) {
-    var entered by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
-    LaunchedEffect(Unit) { entered = true }
+    val progressState = rememberCardProgress(visible, "copy_progress")
+    val progress by progressState
+    // 只在进场动画落位后才开始计时，否则弹簧还没停卡片就自己走了。
     LaunchedEffect(copied) {
+        snapshotFlow { progressState.value }.first { it >= 1f }
         delay(if (copied) CopyCardAfterCopyMs else CopyCardAutoDismissMs)
         onDismiss()
     }
-    val alpha by animateFloatAsState(
-        targetValue = if (entered) 1f else 0f,
-        animationSpec = tween(180),
-        label = "copy_alpha",
-    )
-    val offset by animateFloatAsState(
-        targetValue = if (entered) 0f else 64f,
-        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
-        label = "copy_offset",
-    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -307,8 +325,11 @@ internal fun AgentCopyCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .graphicsLayer {
-                    this.alpha = alpha
-                    translationY = offset
+                    alpha = progress
+                    val scale = CardEnterExitScaleStart + (1f - CardEnterExitScaleStart) * progress
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0.5f, 1f)
                 }
                 .shadow(16.dp, RoundedCornerShape(ChoiceCardCorner), ambientColor = Color.Black.copy(alpha = 0.18f))
                 .clip(RoundedCornerShape(ChoiceCardCorner))
@@ -357,5 +378,9 @@ internal fun AgentCopyCard(
 
 private val ChoiceCardCorner = 28.dp
 private val ChoiceCardMaxHeight = 460.dp
+
+/** 进出场的起始缩放；1 减去它等于弹簧要走的剩余行程。 */
+private const val CardEnterExitScaleStart = 0.92f
+
 private const val CopyCardAfterCopyMs = 1_400L
 private const val CopyCardAutoDismissMs = 12_000L

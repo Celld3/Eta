@@ -55,6 +55,7 @@ import io.github.mangi.eta.agent.overlay.AgentChoiceCard
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.overlay.AgentCopyCard
+import io.github.mangi.eta.agent.overlay.InteractionCardExitMs
 import io.github.mangi.eta.agent.overlay.AgentResultCard
 import io.github.mangi.eta.agent.overlay.AgentOverlayPhase
 import io.github.mangi.eta.agent.overlay.AgentOverlayState
@@ -121,9 +122,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var choiceWindowManager: WindowManager? = null
     private var choiceBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
     @Volatile private var choiceSession: ChoiceSession? = null
+    /** 卡片可见性：置 false 后 Compose 侧先播收起动画，窗口层等动画走完再摘窗。 */
+    private val choiceCardVisible = mutableStateOf(false)
+    private var choiceTeardownTask: Runnable? = null
     /** 复制卡片是与运行并行的轻量提示，只保留最新一张。 */
     private var copyView: ComposeView? = null
     private var copyWindowManager: WindowManager? = null
+    private val copyCardVisible = mutableStateOf(false)
+    private var copyTeardownTask: Runnable? = null
 
     /** 窗口只投影当前手机控制者；各运行的状态保留在自己的记录中。 */
     private val state = mutableStateOf(AgentOverlayState.Initial)
@@ -217,6 +223,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         AgentOverlayClearance.detach(clearanceHost)
         AgentInteraction.detach(this)
         choiceSession?.finish(AgentChoiceResult.Unavailable)
+        cancelCardTeardown(choiceTeardownTask)
+        choiceTeardownTask = null
+        cancelCardTeardown(copyTeardownTask)
+        copyTeardownTask = null
         choiceView?.let { view -> runCatching { choiceWindowManager?.removeView(view) } }
         copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
         unregisterChoiceBack()
@@ -1504,9 +1514,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     private fun showChoiceCard(wm: WindowManager, session: ChoiceSession) {
+        choiceCardVisible.value = false
         val card = createOverlayComposeView {
             AgentChoiceCard(
                 request = session.request,
+                visible = choiceCardVisible.value,
                 onSelect = { index ->
                     val title = session.request.options.getOrNull(index)?.title.orEmpty()
                     val result = if (index in session.request.options.indices) {
@@ -1514,8 +1526,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     } else {
                         AgentChoiceResult.Cancelled
                     }
-                    // 让选中态先亮一下再摘窗，否则点完卡片瞬间消失，用户不知道点中了哪个。
-                    // pending 先落：这 160ms 里按返回或超时都不能把已选中的结论改成取消。
+                    // 让选中态先亮一下再收起，否则点完卡片瞬间消失，用户不知道点中了哪个。
+                    // pending 先落：这段延迟里按返回或超时都不能把已选中的结论改成取消。
                     session.pending = result
                     mainHandler.postDelayed({ dismantleChoiceCard(result) }, ChoiceConfirmDelayMs)
                 },
@@ -1536,18 +1548,26 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         choiceWindowManager = wm
         registerChoiceBack(card)
         card.requestFocus()
+        // addView 当帧还没有可用尺寸，立刻置可见会让弹簧从错误的位置起步；
+        // 等第一帧布局完成再放动画，进场才是完整的一段。
+        card.post { if (choiceView === card) choiceCardVisible.value = true }
         session.shown = true
         session.startTimeout()
         AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.TAP)
     }
 
     private fun showCopyOverlay(wm: WindowManager, title: String, content: String): Boolean {
+        // 上一张还在收起动画里：先把它落定，避免两张卡片同时占位。
+        cancelCardTeardown(copyTeardownTask)
+        copyTeardownTask = null
         copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
         copyView = null
+        copyCardVisible.value = false
         val card = createOverlayComposeView {
             AgentCopyCard(
                 title = title,
                 content = content,
+                visible = copyCardVisible.value,
                 onDismiss = { removeCopyCard() },
             )
         }
@@ -1564,26 +1584,56 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         copyView = card
         copyWindowManager = wm
+        card.post { if (copyView === card) copyCardVisible.value = true }
         return true
     }
 
+    /** 收起复制卡片：先播动画，动画走完再摘窗。 */
     private fun removeCopyCard() {
-        copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
-        copyView = null
-        copyWindowManager = null
+        val view = copyView ?: return
+        if (copyTeardownTask != null) return
+        copyCardVisible.value = false
+        val task = Runnable {
+            copyTeardownTask = null
+            if (copyView === view) {
+                runCatching { copyWindowManager?.removeView(view) }
+                copyView = null
+                copyWindowManager = null
+            }
+        }
+        copyTeardownTask = task
+        mainHandler.postDelayed(task, InteractionCardExitMs)
     }
 
-    /** 关窗与唤醒调用方是同一件事：先摘窗口再放行，调用方拿到的结论一定对应已消失的卡片。 */
+    /**
+     * 收起选择卡片。
+     *
+     * 结论先落地唤醒调用方，窗口随后播收起动画再摘除：模型不必等 190ms 的退场，
+     * 而用户看到的仍是一段完整动画，不是卡片被直接抹掉。
+     */
     private fun dismantleChoiceCard(result: AgentChoiceResult) {
         val session = choiceSession ?: return
         choiceSession = null
         // 用户已经点过的选项优先于晚到的取消/超时。
         val settledResult = session.pending ?: result
         unregisterChoiceBack()
-        choiceView?.let { view -> runCatching { choiceWindowManager?.removeView(view) } }
+        choiceCardVisible.value = false
+        val view = choiceView
         choiceView = null
         choiceWindowManager = null
+        if (view != null && choiceTeardownTask == null) {
+            val task = Runnable {
+                choiceTeardownTask = null
+                runCatching { overlayWindowManagerOrNull()?.removeView(view) }
+            }
+            choiceTeardownTask = task
+            mainHandler.postDelayed(task, InteractionCardExitMs)
+        }
         session.finish(settledResult)
+    }
+
+    private fun cancelCardTeardown(task: Runnable?) {
+        if (task != null) mainHandler.removeCallbacks(task)
     }
 
     private fun registerChoiceBack(view: View) {

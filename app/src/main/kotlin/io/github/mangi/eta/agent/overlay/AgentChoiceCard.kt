@@ -24,8 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -155,7 +155,7 @@ internal fun AgentChoiceCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.HelpOutline,
+                        imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
                         contentDescription = null,
                         modifier = Modifier.size(13.dp),
                         tint = MiuixTheme.colorScheme.primary,

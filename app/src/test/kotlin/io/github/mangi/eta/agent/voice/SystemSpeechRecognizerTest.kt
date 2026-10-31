@@ -37,7 +37,7 @@ class SystemSpeechRecognizerTest {
             configured,
             SystemSpeechRecognizer.selectExternalService(
                 listOf(service(configured.packageName, configured.className)),
-                "io.github.mangi.eta",
+                "io.github.celld3.eta",
                 configured,
             ),
         )
@@ -47,7 +47,7 @@ class SystemSpeechRecognizerTest {
         assertNull(
             SystemSpeechRecognizer.selectExternalService(
                 listOf(service("third.party", "Recognizer")),
-                "io.github.mangi.eta",
+                "io.github.celld3.eta",
                 null,
             ),
         )
@@ -59,9 +59,9 @@ class SystemSpeechRecognizerTest {
             SystemSpeechRecognizer.selectExternalService(
                 listOf(
                     service("third.party", "Hidden", exported = false),
-                    service("io.github.mangi.eta", "EtaRecognitionService", permission = "android.permission.BIND_SPEECH_RECOGNITION_SERVICE"),
+                    service("io.github.celld3.eta", "EtaRecognitionService", permission = "android.permission.BIND_SPEECH_RECOGNITION_SERVICE"),
                 ),
-                "io.github.mangi.eta",
+                "io.github.celld3.eta",
                 configured,
             ),
         )

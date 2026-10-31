@@ -7,8 +7,8 @@ import org.junit.Test
 class AppProcessPolicyTest {
     @Test
     fun `仅主进程初始化完整 Runtime 依赖`() {
-        assertTrue(AppProcessPolicy.shouldInitializeFullRuntime("io.github.mangi.eta", "io.github.mangi.eta"))
-        assertFalse(AppProcessPolicy.shouldInitializeFullRuntime("io.github.mangi.eta:voice", "io.github.mangi.eta"))
-        assertFalse(AppProcessPolicy.shouldInitializeFullRuntime("io.github.mangi.eta:voice_session", "io.github.mangi.eta"))
+        assertTrue(AppProcessPolicy.shouldInitializeFullRuntime("io.github.celld3.eta", "io.github.celld3.eta"))
+        assertFalse(AppProcessPolicy.shouldInitializeFullRuntime("io.github.celld3.eta:voice", "io.github.celld3.eta"))
+        assertFalse(AppProcessPolicy.shouldInitializeFullRuntime("io.github.celld3.eta:voice_session", "io.github.celld3.eta"))
     }
 }

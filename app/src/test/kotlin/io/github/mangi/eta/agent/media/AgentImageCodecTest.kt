@@ -246,7 +246,7 @@ class AgentImageCodecTest {
             bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
         }
         bitmap.recycle()
-        val authority = "io.github.mangi.eta.test.picker.${System.nanoTime()}"
+        val authority = "io.github.celld3.eta.test.picker.${System.nanoTime()}"
         val provider = TypedImageProvider(sourceFile)
         provider.attachInfo(
             context,

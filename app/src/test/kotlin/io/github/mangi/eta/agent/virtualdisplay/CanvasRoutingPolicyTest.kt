@@ -38,7 +38,7 @@ class CanvasRoutingPolicyTest {
     @Test
     fun systemUiAndEtaOwnPackageAlwaysStayOnMainDisplay() {
         listOf(
-            "io.github.mangi.eta",
+            "io.github.celld3.eta",
             "com.android.systemui",
             "com.miui.home",
             "com.oppo.launcher",
@@ -63,7 +63,7 @@ class CanvasRoutingPolicyTest {
                 backendAvailable = true,
                 requested = RequestedDisplay.MAIN,
                 targetPackage = "com.jingdong.app.mall",
-                foregroundPackageOnMainDisplay = "io.github.mangi.eta",
+                foregroundPackageOnMainDisplay = "io.github.celld3.eta",
             ),
         )
         assertEquals(
@@ -73,7 +73,7 @@ class CanvasRoutingPolicyTest {
                 backendAvailable = true,
                 requested = RequestedDisplay.AUTO,
                 targetPackage = "com.jingdong.app.mall",
-                foregroundPackageOnMainDisplay = "io.github.mangi.eta",
+                foregroundPackageOnMainDisplay = "io.github.celld3.eta",
             ),
         )
         assertEquals(
@@ -83,7 +83,7 @@ class CanvasRoutingPolicyTest {
                 backendAvailable = false,
                 requested = RequestedDisplay.VIRTUAL,
                 targetPackage = "com.jingdong.app.mall",
-                foregroundPackageOnMainDisplay = "io.github.mangi.eta",
+                foregroundPackageOnMainDisplay = "io.github.celld3.eta",
             ),
         )
     }

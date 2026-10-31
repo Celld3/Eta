@@ -11,7 +11,7 @@ class LogSafetyTest {
     fun safeStackTracePreservesLocationsWithoutMessagesOrSuppressedPayloads() {
         val cause = IllegalArgumentException("private-conversation-content")
         val failure = IllegalStateException("private-api-key", cause).apply {
-            stackTrace = arrayOf(StackTraceElement("io.github.mangi.eta.Store", "save", "Store.kt", 42))
+            stackTrace = arrayOf(StackTraceElement("io.github.celld3.eta.Store", "save", "Store.kt", 42))
             addSuppressed(IllegalStateException("private-path"))
         }
         val rendered = failure.safeStackTrace()

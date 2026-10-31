@@ -10,7 +10,7 @@ class AppRouteSerializationTest {
     @Test
     fun legacyBrowserRouteRestoresTheManualPage() {
         val restored = Json.decodeFromString<AppRoute>(
-            """{"type":"io.github.celld3.eta.ui.navigation.AppRoute.Browser"}""",
+            """{"type":"io.github.mangi.eta.ui.navigation.AppRoute.Browser"}""",
         )
         assertEquals(AppRoute.Browser(), restored)
     }

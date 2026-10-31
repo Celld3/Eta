@@ -30,7 +30,7 @@ class AgentBrowserActivityTest {
         val context = RuntimeEnvironment.getApplication()
         val intent = AgentBrowserActivity.createIntent(context, "conversation-a")
         assertEquals(ComponentName(context, AgentBrowserActivity::class.java), intent.component)
-        assertEquals("conversation-a", intent.getStringExtra("io.github.celld3.eta.extra.BROWSER_SESSION_KEY"))
+        assertEquals("conversation-a", intent.getStringExtra("io.github.mangi.eta.extra.BROWSER_SESSION_KEY"))
     }
 
     @Test

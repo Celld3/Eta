@@ -193,6 +193,24 @@ internal fun AppearanceSettingsScreen(onBack: () -> Unit) {
         item(key = "appearance_interface_card") {
             EtaPreferenceGroup(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
                 EtaSwitchPreference(
+                    title = stringResource(R.string.appearance_hide_overlay_glow),
+                    summary = stringResource(R.string.appearance_hide_overlay_glow_summary),
+                    checked = appearance.hideOverlayGlow,
+                    onCheckedChange = { enabled ->
+                        update { current -> current.copy(hideOverlayGlow = enabled) }
+                    },
+                )
+                EtaPreferenceDivider(hasLeading = false)
+                EtaSwitchPreference(
+                    title = stringResource(R.string.appearance_hide_overlay_capsule),
+                    summary = stringResource(R.string.appearance_hide_overlay_capsule_summary),
+                    checked = appearance.hideOverlayCapsule,
+                    onCheckedChange = { enabled ->
+                        update { current -> current.copy(hideOverlayCapsule = enabled) }
+                    },
+                )
+                EtaPreferenceDivider(hasLeading = false)
+                EtaSwitchPreference(
                     title = stringResource(R.string.appearance_blur),
                     summary = stringResource(R.string.appearance_blur_summary),
                     checked = appearance.blurEnabled && blurSupported,

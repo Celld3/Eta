@@ -67,6 +67,7 @@ import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.ModuleConfig
+import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import kotlin.concurrent.thread
@@ -110,6 +111,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private var windowManager: WindowManager? = null
     private var glowView: ComposeView? = null
+    /** 外观设置里的浮窗开关；服务侧订阅外观设置流后同步，默认都开。 */
+    private val hideOverlayGlow = mutableStateOf(false)
+    private val hideOverlayCapsule = mutableStateOf(false)
+    /** 胶囊被隐藏时用来维持屏幕常亮的最小窗口；只是给系统一个「别熄灭」的信号。 */
+    private var keepScreenOnProbe: View? = null
+    /** 浮窗是否已挂载；胶囊可能被隐藏，不能再用 capsuleView 作为唯一判据。 */
+    private var overlayMounted = false
     private var capsuleView: ComposeView? = null
     private var resultCardView: ComposeView? = null
     private var glowParams: WindowManager.LayoutParams? = null
@@ -172,6 +180,24 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         AgentOverlayClearance.attach(clearanceHost)
         AgentInteraction.attach(this)
+        serviceScope.launch {
+            // 设置存储未初始化（纯单元测试环境）时读不到开关，按默认值继续，不影响浮窗主流程。
+            val appearanceFlow = runCatching { AppearanceSettingsRepository.settingsFlow() }
+                .onFailure { throwable ->
+                    AndroidAgentLogger.warnThrottled("runtime_appearance_flow_unavailable") {
+                        "Agent runtime appearance flow unavailable: type=${throwable.safeLogType()}"
+                    }
+                }
+                .getOrNull() ?: return@launch
+            appearanceFlow.collect { settings ->
+                val glowChanged = hideOverlayGlow.value != settings.hideOverlayGlow
+                val capsuleChanged = hideOverlayCapsule.value != settings.hideOverlayCapsule
+                hideOverlayGlow.value = settings.hideOverlayGlow
+                hideOverlayCapsule.value = settings.hideOverlayCapsule
+                // 开关在任务进行中被改动时立刻重排浮窗；没有挂载过就什么都不做。
+                if (overlayMounted && (glowChanged || capsuleChanged)) restoreOverlayWindows()
+            }
+        }
         serviceScope.launch { guiControl.state.collect(::applyGuiControlState) }
         serviceScope.launch {
             VirtualDisplayController.snapshots.collect { snapshot ->
@@ -223,6 +249,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         AgentOverlayClearance.detach(clearanceHost)
         AgentInteraction.detach(this)
         choiceSession?.finish(AgentChoiceResult.Unavailable)
+        // 常亮探针必须兜底摘除，否则异常退出时屏幕会一直亮着。
+        removeKeepScreenOnProbe()
         cancelCardTeardown(choiceTeardownTask)
         choiceTeardownTask = null
         cancelCardTeardown(copyTeardownTask)
@@ -913,6 +941,28 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         showOverlay()
     }
 
+    /** 外观开关在任务进行中被改动：按新设置摘掉并重建氛围窗口，探针常亮状态保持不变。 */
+    private fun restoreOverlayWindows() {
+        mainHandler.removeCallbacks(restoreCapsule)
+        capsuleYielded.value = false
+        capsuleExpanded.value = false
+        unregisterCapsuleInteractions()
+        capsuleView?.keepScreenOn = false
+        capsuleView?.let { view -> runCatching { windowManager?.removeView(view) } }
+        glowView?.let { view -> runCatching { windowManager?.removeView(view) } }
+        capsuleView = null
+        glowView = null
+        capsuleParams = null
+        glowParams = null
+        overlayMounted = false
+        ensureOverlayVisible()
+    }
+
+    /** 胶囊被重建后原来的输入法与焦点状态都不再有效，按需复位；当前没有额外登记项。 */
+    private fun unregisterCapsuleInteractions() {
+        capsuleSupplementFocusable.value = false
+    }
+
     private fun syncActiveRunOverlayVisibility(run: RuntimeRunRegistry.Run?) {
         if (AgentOverlayVisibilityPolicy.shouldSuppressOverlayInEtaUi(
                 handoffSource = run?.request?.handoff?.source,
@@ -1018,17 +1068,95 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private fun setKeepScreenOn(enabled: Boolean) {
         keepScreenOnState.value = enabled
-        capsuleView?.keepScreenOn = enabled
+        val capsule = capsuleView
+        if (capsule != null) {
+            capsule.keepScreenOn = enabled
+            // 胶囊在时它自己就是常亮的载体，探针窗口没有存在必要。
+            removeKeepScreenOnProbe()
+        } else {
+            setKeepScreenOnProbe(enabled)
+        }
+    }
+
+    /**
+     * 胶囊被隐藏时，屏幕常亮不能依附在它身上。
+     *
+     * 这里用一个 1dp、不可触摸、不可聚焦的浮窗携带 FLAG_KEEP_SCREEN_ON：
+     * 只是给系统一个「当前有人在用」的信号，不占可视区域，也不参与触摸与焦点。
+     * 不用 WAKE_LOCK 是有意为之——那要额外权限，而 SCREEN_BRIGHT_WAKE_LOCK 在 API 33 已废弃，
+     * 官方给的替代方案恰好就是这个窗口标志。
+     */
+    private fun setKeepScreenOnProbe(enabled: Boolean) {
+        if (!enabled) {
+            removeKeepScreenOnProbe()
+            return
+        }
+        if (keepScreenOnProbe != null) return
+        val wm = overlayWindowManagerOrNull() ?: return
+        if (AgentAccessibilityService.current() == null && !Settings.canDrawOverlays(this)) return
+        val view = View(overlayContext())
+        val lp = WindowManager.LayoutParams(
+            1,
+            1,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            // 贴着屏幕左上角；1px 透明空 View，看不见也摸不到。
+            x = 0
+            y = 0
+            windowAnimations = 0
+        }
+        val added = runCatching { wm.addView(view, lp) }
+        if (added.isFailure) {
+            AndroidAgentLogger.warnThrottled("runtime_keep_screen_on_probe_failed") {
+                "Agent runtime keep-screen-on probe addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
+            }
+            return
+        }
+        keepScreenOnProbe = view
+    }
+
+    private fun removeKeepScreenOnProbe() {
+        val view = keepScreenOnProbe ?: return
+        // 先摘窗再清引用：WindowManager 拿不到时不留悬挂引用，避免窗口泄漏。
+        val wm = windowManager ?: overlayWindowManagerOrNull()
+        if (wm != null) {
+            runCatching { wm.removeView(view) }.onFailure { throwable ->
+                AndroidAgentLogger.warnThrottled("runtime_keep_screen_on_probe_remove_failed") {
+                    "Agent runtime keep-screen-on probe removeView failed: type=${throwable.safeLogType()}"
+                }
+            }
+        }
+        keepScreenOnProbe = null
     }
 
     private fun showOverlay() {
-        if (capsuleView != null) return
+        // 胶囊可能被用户隐藏，不能再用 capsuleView 是否存在判断浮窗是否已挂载，
+        // 否则隐藏胶囊后每次ensure 都会重复 addView 同一个窗口。
+        if (overlayMounted) return
         // TYPE_ACCESSIBILITY_OVERLAY 免 SYSTEM_ALERT_WINDOW 权限；仅回退态（无障碍未启用）才需检查
         if (AgentAccessibilityService.current() == null && !Settings.canDrawOverlays(this)) return
         val wm = overlayContext().getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         windowManager = wm
+        overlayMounted = true
 
-        // ── 氛围光窗口：全屏触摸穿透，彩虹光圈（后台虚拟屏运行时隐藏流光，仅承载全屏破壁动画） ─
+        // 用户在外观设置里关掉流光时整窗不建；破壁动画随虚拟屏投屏走另一条路径，不受影响。
+        if (!hideOverlayGlow.value) mountGlowWindow(wm)
+        // 用户隐藏胶囊时同样整窗不建，状态与停止入口由常驻通知与屏幕常亮探针接管。
+        if (!hideOverlayCapsule.value) mountCapsuleWindow(wm)
+        // 常亮载体随窗口重建重新校正：胶囊在就用胶囊，不在就补一个探针窗口。
+        setKeepScreenOn(keepScreenOnState.value)
+    }
+
+    /**
+     * 氛围光窗口：全屏触摸穿透，彩虹光圈（后台虚拟屏运行时隐藏流光，仅承载全屏破壁动画）。
+     */
+    private fun mountGlowWindow(wm: WindowManager) {
         val glow = createOverlayComposeView {
             AgentOverlayGlow(
                 state = state.value,
@@ -1041,11 +1169,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             AndroidAgentLogger.warnThrottled("runtime_glow_add_view_failed") {
                 "Agent runtime glow addView failed: type=${throwable.safeLogType()}"
             }
+            return
         }
         glowView = glow
         glowParams = glowLp
+    }
 
-        // ── 状态胶囊窗口：状态栏下方居中，收起时一句状态（含微缩镜），点击展开控制与画廊视窗 ─
+    /**
+     * 状态胶囊窗口：状态栏下方居中，收起时一句状态（含微缩镜），点击展开控制与画廊视窗。
+     */
+    private fun mountCapsuleWindow(wm: WindowManager) {
         val capsule = createOverlayComposeView {
             val controlRunId = displayedRun?.runId
             AgentOverlayCapsule(
@@ -1093,6 +1226,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         capsuleView = capsule
         capsuleParams = capsuleLp
+        // 胶囊本身就是常亮载体，登录探针继续留着只会多一个窗口。
+        removeKeepScreenOnProbe()
     }
 
     /**
@@ -1754,6 +1889,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         glowView = null
         capsuleParams = null
         glowParams = null
+        // 两个窗口都摘了，浮窗回到未挂载；探针窗口跟随常亮状态，这里不强制摘除，
+        // 由任务结束时的 setKeepScreenOn(false) 统一收回。
+        overlayMounted = false
     }
 
     private fun dismissAndStop() {
@@ -1785,6 +1923,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         resultCardParams = null
         capsuleParams = null
         glowParams = null
+        overlayMounted = false
+        removeKeepScreenOnProbe()
         windowManager = null
     }
 

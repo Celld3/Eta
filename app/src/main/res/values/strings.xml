@@ -178,6 +178,10 @@
   <string name="appearance_accent_teal">Teal</string>
   <string name="appearance_pure_black">Pure black background</string>
   <string name="appearance_pure_black_summary">Use a pure black background in dark mode</string>
+  <string name="appearance_hide_overlay_glow">Hide edge glow</string>
+  <string name="appearance_hide_overlay_glow_summary">Skip the rainbow light band drawn around the screen while running</string>
+  <string name="appearance_hide_overlay_capsule">Hide status capsule</string>
+  <string name="appearance_hide_overlay_capsule_summary">Run without the floating capsule; status and Stop stay in the notification</string>
   <string name="appearance_blur">Blur effects</string>
   <string name="appearance_blur_summary">Enable blur on top bars, the chat input surface, and similar areas</string>
   <string name="appearance_blur_style">Top bar blur style</string>

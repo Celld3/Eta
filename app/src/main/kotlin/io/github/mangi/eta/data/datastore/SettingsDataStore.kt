@@ -111,6 +111,10 @@ internal object SettingsDataStore {
     private val APPEARANCE_PREDICTIVE_BACK_ENABLED =
         booleanPreferencesKey("appearance_predictive_back_enabled")
     private val APPEARANCE_INTERFACE_SCALE = floatPreferencesKey("appearance_interface_scale")
+    private val APPEARANCE_HIDE_OVERLAY_GLOW =
+        booleanPreferencesKey("appearance_hide_overlay_glow")
+    private val APPEARANCE_HIDE_OVERLAY_CAPSULE =
+        booleanPreferencesKey("appearance_hide_overlay_capsule")
     private const val SELECTED_MODEL_BY_PROVIDER_PREFIX = "selected_model_id_by_provider."
 
     private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = STORE_NAME)
@@ -298,6 +302,8 @@ internal object SettingsDataStore {
             swipeDismissEnabled = this[APPEARANCE_SWIPE_DISMISS_ENABLED] ?: true,
             predictiveBackEnabled = this[APPEARANCE_PREDICTIVE_BACK_ENABLED] ?: true,
             interfaceScale = this[APPEARANCE_INTERFACE_SCALE] ?: 1f,
+            hideOverlayGlow = this[APPEARANCE_HIDE_OVERLAY_GLOW] ?: false,
+            hideOverlayCapsule = this[APPEARANCE_HIDE_OVERLAY_CAPSULE] ?: false,
         ).normalized(),
     )
 
@@ -312,5 +318,7 @@ internal object SettingsDataStore {
         this[APPEARANCE_SWIPE_DISMISS_ENABLED] = settings.swipeDismissEnabled
         this[APPEARANCE_PREDICTIVE_BACK_ENABLED] = settings.predictiveBackEnabled
         this[APPEARANCE_INTERFACE_SCALE] = settings.interfaceScale
+        this[APPEARANCE_HIDE_OVERLAY_GLOW] = settings.hideOverlayGlow
+        this[APPEARANCE_HIDE_OVERLAY_CAPSULE] = settings.hideOverlayCapsule
     }
 }

@@ -178,6 +178,10 @@
   <string name="appearance_accent_teal">青色</string>
   <string name="appearance_pure_black">純黑背景</string>
   <string name="appearance_pure_black_summary">深色模式下使用純黑背景</string>
+  <string name="appearance_hide_overlay_glow">隱藏邊緣流光</string>
+  <string name="appearance_hide_overlay_glow_summary">執行時不再繪製螢幕四周的彩虹光帶</string>
+  <string name="appearance_hide_overlay_capsule">隱藏狀態膠囊</string>
+  <string name="appearance_hide_overlay_capsule_summary">執行時不再顯示頂部懸浮膠囊，狀態與停止入口保留在通知列</string>
   <string name="appearance_blur">模糊效果</string>
   <string name="appearance_blur_summary">啟用頂部列、聊天輸入區等表面的模糊效果</string>
   <string name="appearance_blur_style">頂部列模糊樣式</string>

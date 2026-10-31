@@ -18,6 +18,10 @@ data class AppearanceSettings(
     val swipeDismissEnabled: Boolean = true,
     val predictiveBackEnabled: Boolean = true,
     val interfaceScale: Float = DEFAULT_INTERFACE_SCALE,
+    /** 运行浮窗：隐藏屏幕四周的彩虹流光。 */
+    val hideOverlayGlow: Boolean = false,
+    /** 运行浮窗：隐藏顶部状态胶囊（状态与停止改由常驻通知承载）。 */
+    val hideOverlayCapsule: Boolean = false,
 ) {
     fun normalized(): AppearanceSettings = copy(
         interfaceScale = normalizeInterfaceScale(interfaceScale),

@@ -149,7 +149,8 @@ jobs:
   publish-latest:
     name: 发布最新构建
     needs: [verify, build-apks]
-    if: github.ref_type != 'tag'
+    # 只在 main 上滚动覆盖主页 Release；分支构建只留 Actions 产物，不顶掉正式包
+    if: github.ref_type != 'tag' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

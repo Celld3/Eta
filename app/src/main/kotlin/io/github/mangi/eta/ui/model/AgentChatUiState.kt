@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui.model
 import androidx.compose.runtime.Immutable
 import io.github.mangi.eta.agent.model.AgentFileReference
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.roleplay.RoleplayBinding
 import io.github.mangi.eta.agent.roleplay.RoleplayMessageState
@@ -40,6 +41,7 @@ internal data class AgentChatUiState(
     val hasEarlierMessages: Boolean = false,
     /** 等待用户拍板的选项请求；非空时在输入框上方渲染内嵌面板。 */
     val pendingChoice: AgentChoiceRequest? = null,
+    val pendingCopy: CopyCardRequest? = null,
     val conversationCharacterName: String? = null,
     val conversationCharacterAvatarPath: String? = null,
 ) {

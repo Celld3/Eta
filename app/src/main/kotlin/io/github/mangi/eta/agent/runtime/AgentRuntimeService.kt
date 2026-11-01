@@ -51,7 +51,6 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayGlow
 import io.github.mangi.eta.agent.overlay.ScreenCornerRadii
 import io.github.mangi.eta.agent.overlay.AgentOverlayCapsule
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
-import io.github.mangi.eta.agent.overlay.AgentChoiceCard
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.overlay.AgentCopyCard

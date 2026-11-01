@@ -174,6 +174,12 @@ private fun ChoiceRow(
     }
 }
 
+/** 点「复制」后「已复制」状态的停留时长。 */
+private const val CopyCardAfterCopyMs = 900L
+
+/** 未点复制时，复制卡片自动收起的超时。 */
+private const val CopyCardAutoDismissMs = 5_000L
+
 /** 内嵌面板选项区的固定最大高度；超出后由 LazyColumn 内部滚动。 */
 private val InlineChoiceListMaxHeight = 220.dp
 

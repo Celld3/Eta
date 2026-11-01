@@ -27,14 +27,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
@@ -128,124 +126,7 @@ private fun rememberCardProgress(visible: Boolean, label: String): State<Float> 
         label = label,
     )
 
-/**
- * 模型需要用户拍板时弹出的底部选择卡片。
- *
- * 与结果卡片共用同一套浮窗语汇：底部圆角面板、顶部抓手、窗口外触摸穿透。
- * 与结果卡片不同的是它必须被回答：卡片不会自动消失，只由点选、取消、返回或超时结束。
- *
- * [visible] 由窗口层驱动：置 false 后卡片先播收起动画，窗口层等
- * [InteractionCardExitMs] 再摘窗，进出两侧都有完整的一帧序列。
- */
-@Composable
-internal fun AgentChoiceCard(
-    request: AgentChoiceRequest,
-    visible: Boolean,
-    onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var chosenIndex by remember { mutableIntStateOf(-1) }
-    var settled by remember { mutableStateOf(false) }
-    val progress by rememberCardProgress(visible, "choice_progress")
 
-    // settled 先落，避免连点或点完立刻按返回把同一个结论回传两次。
-    fun choose(index: Int) {
-        if (settled) return
-        settled = true
-        chosenIndex = index
-        onSelect(index)
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = ChoiceCardMaxHeight)
-                .graphicsLayer {
-                    // 浮窗高度就是卡片高度，任何位移都会被窗口边界裁掉一截，
-                    // 所以进出场只做缩放与透明度：从底边生长，收回时缩回底边。
-                    alpha = progress
-                    val scale = CardEnterExitScaleStart + (1f - CardEnterExitScaleStart) * progress
-                    scaleX = scale
-                    scaleY = scale
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                }
-                .shadow(16.dp, RoundedCornerShape(ChoiceCardCorner), ambientColor = Color.Black.copy(alpha = 0.18f))
-                .clip(RoundedCornerShape(ChoiceCardCorner))
-                .background(MiuixTheme.colorScheme.surface),
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .align(Alignment.CenterHorizontally)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.3f)),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
-                        contentDescription = null,
-                        modifier = Modifier.size(13.dp),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = request.title,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            val scroll = rememberScrollState()
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scroll)
-                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (request.subtitle.isNotBlank()) {
-                    Text(
-                        text = request.subtitle,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-                request.options.forEachIndexed { index, option ->
-                    ChoiceRow(
-                        option = option,
-                        chosen = settled && chosenIndex == index,
-                        onChosen = { choose(index) },
-                    )
-                }
-            }
-            TextButton(
-                text = stringResource(R.string.overlay_choice_dismiss),
-                onClick = { if (!settled) onDismiss() },
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
-                minHeight = 44.dp,
-            )
-        }
-    }
-}
 
 @Composable
 private fun ChoiceRow(

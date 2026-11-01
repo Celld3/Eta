@@ -80,6 +80,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.AgentInlineChoicePanel
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -145,6 +147,10 @@ internal fun AgentChatInputBar(
     onAttachFilePath: (String) -> Unit,
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
+    pendingChoice: AgentChoiceRequest? = null,
+    onChoiceSelect: (Int) -> Unit = {},
+    onChoiceCustomInput: (String) -> Unit = {},
+    onChoiceDismiss: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -250,6 +256,23 @@ internal fun AgentChatInputBar(
                 // 与输入框内正文同一起点（容器 10dp + 文本 8dp）。
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
             )
+        }
+
+        AnimatedVisibility(
+            visible = pendingChoice != null,
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(150)),
+        ) {
+            pendingChoice?.let { choice ->
+                AgentInlineChoicePanel(
+                    request = choice,
+                    visible = true,
+                    onSelect = onChoiceSelect,
+                    onCustomInput = onChoiceCustomInput,
+                    onDismiss = onChoiceDismiss,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
         }
 
         Box(

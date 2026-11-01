@@ -51,6 +51,7 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayGlow
 import io.github.mangi.eta.agent.overlay.ScreenCornerRadii
 import io.github.mangi.eta.agent.overlay.AgentOverlayCapsule
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
+import io.github.mangi.eta.agent.overlay.AgentChoiceCard
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
@@ -67,6 +68,7 @@ import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.ModuleConfig
+import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import kotlin.concurrent.thread
@@ -110,6 +112,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private var windowManager: WindowManager? = null
     private var glowView: ComposeView? = null
+    /** 外观设置里的浮窗开关；服务侧订阅外观设置流后同步，默认都开。 */
+    private val hideOverlayGlow = mutableStateOf(false)
+    private val hideOverlayCapsule = mutableStateOf(false)
+    /** 胶囊被隐藏时用来维持屏幕常亮的最小窗口；只是给系统一个「别熄灭」的信号。 */
+    private var keepScreenOnProbe: View? = null
+    /** 浮窗是否已挂载；胶囊可能被隐藏，不能再用 capsuleView 作为唯一判据。 */
+    private var overlayMounted = false
     private var capsuleView: ComposeView? = null
     private var resultCardView: ComposeView? = null
     private var glowParams: WindowManager.LayoutParams? = null
@@ -117,7 +126,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var resultCardParams: WindowManager.LayoutParams? = null
     private var resultCardBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
 
+    /** 选择卡片的窗口；与结果卡片分开持有，避免任务收尾时被一起拆掉。 */
+    private var choiceView: ComposeView? = null
+    private var choiceWindowManager: WindowManager? = null
+    private var choiceBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
     @Volatile private var choiceSession: ChoiceSession? = null
+    /** 卡片可见性：置 false 后 Compose 侧先播收起动画，窗口层等动画走完再摘窗。 */
+    private val choiceCardVisible = mutableStateOf(false)
+    private var choiceTeardownTask: Runnable? = null
     /** 复制卡片是与运行并行的轻量提示，只保留最新一张。 */
     private var copyView: ComposeView? = null
     private var copyWindowManager: WindowManager? = null
@@ -165,6 +181,24 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         AgentOverlayClearance.attach(clearanceHost)
         AgentInteraction.attach(this)
+        serviceScope.launch {
+            // 设置存储未初始化（纯单元测试环境）时读不到开关，按默认值继续，不影响浮窗主流程。
+            val appearanceFlow = runCatching { AppearanceSettingsRepository.settingsFlow() }
+                .onFailure { throwable ->
+                    AndroidAgentLogger.warnThrottled("runtime_appearance_flow_unavailable") {
+                        "Agent runtime appearance flow unavailable: type=${throwable.safeLogType()}"
+                    }
+                }
+                .getOrNull() ?: return@launch
+            appearanceFlow.collect { settings ->
+                val glowChanged = hideOverlayGlow.value != settings.hideOverlayGlow
+                val capsuleChanged = hideOverlayCapsule.value != settings.hideOverlayCapsule
+                hideOverlayGlow.value = settings.hideOverlayGlow
+                hideOverlayCapsule.value = settings.hideOverlayCapsule
+                // 开关在任务进行中被改动时立刻重排浮窗；没有挂载过就什么都不做。
+                if (overlayMounted && (glowChanged || capsuleChanged)) restoreOverlayWindows()
+            }
+        }
         serviceScope.launch { guiControl.state.collect(::applyGuiControlState) }
         serviceScope.launch {
             VirtualDisplayController.snapshots.collect { snapshot ->
@@ -216,12 +250,19 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         AgentOverlayClearance.detach(clearanceHost)
         AgentInteraction.detach(this)
         choiceSession?.finish(AgentChoiceResult.Unavailable)
-        pendingChoiceState.value = null
+        // 常亮探针必须兜底摘除，否则异常退出时屏幕会一直亮着。
+        removeKeepScreenOnProbe()
+        cancelCardTeardown(choiceTeardownTask)
+        choiceTeardownTask = null
         cancelCardTeardown(copyTeardownTask)
         copyTeardownTask = null
+        choiceView?.let { view -> runCatching { choiceWindowManager?.removeView(view) } }
         copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
+        unregisterChoiceBack()
+        choiceView = null
         copyView = null
         choiceSession = null
+        choiceWindowManager = null
         copyWindowManager = null
         VirtualDisplayController.release(this)
         unregisterResultCardBack()
@@ -901,6 +942,28 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         showOverlay()
     }
 
+    /** 外观开关在任务进行中被改动：按新设置摘掉并重建氛围窗口，探针常亮状态保持不变。 */
+    private fun restoreOverlayWindows() {
+        mainHandler.removeCallbacks(restoreCapsule)
+        capsuleYielded.value = false
+        capsuleExpanded.value = false
+        unregisterCapsuleInteractions()
+        capsuleView?.keepScreenOn = false
+        capsuleView?.let { view -> runCatching { windowManager?.removeView(view) } }
+        glowView?.let { view -> runCatching { windowManager?.removeView(view) } }
+        capsuleView = null
+        glowView = null
+        capsuleParams = null
+        glowParams = null
+        overlayMounted = false
+        ensureOverlayVisible()
+    }
+
+    /** 胶囊被重建后原来的输入法与焦点状态都不再有效，按需复位；当前没有额外登记项。 */
+    private fun unregisterCapsuleInteractions() {
+        capsuleSupplementFocusable.value = false
+    }
+
     private fun syncActiveRunOverlayVisibility(run: RuntimeRunRegistry.Run?) {
         if (AgentOverlayVisibilityPolicy.shouldSuppressOverlayInEtaUi(
                 handoffSource = run?.request?.handoff?.source,
@@ -1006,17 +1069,95 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private fun setKeepScreenOn(enabled: Boolean) {
         keepScreenOnState.value = enabled
-        capsuleView?.keepScreenOn = enabled
+        val capsule = capsuleView
+        if (capsule != null) {
+            capsule.keepScreenOn = enabled
+            // 胶囊在时它自己就是常亮的载体，探针窗口没有存在必要。
+            removeKeepScreenOnProbe()
+        } else {
+            setKeepScreenOnProbe(enabled)
+        }
+    }
+
+    /**
+     * 胶囊被隐藏时，屏幕常亮不能依附在它身上。
+     *
+     * 这里用一个 1dp、不可触摸、不可聚焦的浮窗携带 FLAG_KEEP_SCREEN_ON：
+     * 只是给系统一个「当前有人在用」的信号，不占可视区域，也不参与触摸与焦点。
+     * 不用 WAKE_LOCK 是有意为之——那要额外权限，而 SCREEN_BRIGHT_WAKE_LOCK 在 API 33 已废弃，
+     * 官方给的替代方案恰好就是这个窗口标志。
+     */
+    private fun setKeepScreenOnProbe(enabled: Boolean) {
+        if (!enabled) {
+            removeKeepScreenOnProbe()
+            return
+        }
+        if (keepScreenOnProbe != null) return
+        val wm = overlayWindowManagerOrNull() ?: return
+        if (AgentAccessibilityService.current() == null && !Settings.canDrawOverlays(this)) return
+        val view = View(overlayContext())
+        val lp = WindowManager.LayoutParams(
+            1,
+            1,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            // 贴着屏幕左上角；1px 透明空 View，看不见也摸不到。
+            x = 0
+            y = 0
+            windowAnimations = 0
+        }
+        val added = runCatching { wm.addView(view, lp) }
+        if (added.isFailure) {
+            AndroidAgentLogger.warnThrottled("runtime_keep_screen_on_probe_failed") {
+                "Agent runtime keep-screen-on probe addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
+            }
+            return
+        }
+        keepScreenOnProbe = view
+    }
+
+    private fun removeKeepScreenOnProbe() {
+        val view = keepScreenOnProbe ?: return
+        // 先摘窗再清引用：WindowManager 拿不到时不留悬挂引用，避免窗口泄漏。
+        val wm = windowManager ?: overlayWindowManagerOrNull()
+        if (wm != null) {
+            runCatching { wm.removeView(view) }.onFailure { throwable ->
+                AndroidAgentLogger.warnThrottled("runtime_keep_screen_on_probe_remove_failed") {
+                    "Agent runtime keep-screen-on probe removeView failed: type=${throwable.safeLogType()}"
+                }
+            }
+        }
+        keepScreenOnProbe = null
     }
 
     private fun showOverlay() {
-        if (capsuleView != null) return
+        // 胶囊可能被用户隐藏，不能再用 capsuleView 是否存在判断浮窗是否已挂载，
+        // 否则隐藏胶囊后每次ensure 都会重复 addView 同一个窗口。
+        if (overlayMounted) return
         // TYPE_ACCESSIBILITY_OVERLAY 免 SYSTEM_ALERT_WINDOW 权限；仅回退态（无障碍未启用）才需检查
         if (AgentAccessibilityService.current() == null && !Settings.canDrawOverlays(this)) return
         val wm = overlayContext().getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         windowManager = wm
+        overlayMounted = true
 
-        // ── 氛围光窗口：全屏触摸穿透，彩虹光圈（后台虚拟屏运行时隐藏流光，仅承载全屏破壁动画） ─
+        // 用户在外观设置里关掉流光时整窗不建；破壁动画随虚拟屏投屏走另一条路径，不受影响。
+        if (!hideOverlayGlow.value) mountGlowWindow(wm)
+        // 用户隐藏胶囊时同样整窗不建，状态与停止入口由常驻通知与屏幕常亮探针接管。
+        if (!hideOverlayCapsule.value) mountCapsuleWindow(wm)
+        // 常亮载体随窗口重建重新校正：胶囊在就用胶囊，不在就补一个探针窗口。
+        setKeepScreenOn(keepScreenOnState.value)
+    }
+
+    /**
+     * 氛围光窗口：全屏触摸穿透，彩虹光圈（后台虚拟屏运行时隐藏流光，仅承载全屏破壁动画）。
+     */
+    private fun mountGlowWindow(wm: WindowManager) {
         val glow = createOverlayComposeView {
             AgentOverlayGlow(
                 state = state.value,
@@ -1029,11 +1170,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             AndroidAgentLogger.warnThrottled("runtime_glow_add_view_failed") {
                 "Agent runtime glow addView failed: type=${throwable.safeLogType()}"
             }
+            return
         }
         glowView = glow
         glowParams = glowLp
+    }
 
-        // ── 状态胶囊窗口：状态栏下方居中，收起时一句状态（含微缩镜），点击展开控制与画廊视窗 ─
+    /**
+     * 状态胶囊窗口：状态栏下方居中，收起时一句状态（含微缩镜），点击展开控制与画廊视窗。
+     */
+    private fun mountCapsuleWindow(wm: WindowManager) {
         val capsule = createOverlayComposeView {
             val controlRunId = displayedRun?.runId
             AgentOverlayCapsule(
@@ -1081,6 +1227,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         capsuleView = capsule
         capsuleParams = capsuleLp
+        // 胶囊本身就是常亮载体，登录探针继续留着只会多一个窗口。
+        removeKeepScreenOnProbe()
     }
 
     /**
@@ -1427,6 +1575,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     override fun requestChoice(request: AgentChoiceRequest, isCancelled: () -> Boolean): AgentChoiceResult {
         if (destroyed) return AgentChoiceResult.Unavailable
+        val wm = overlayWindowManagerOrNull() ?: return AgentChoiceResult.Unavailable
         if (choiceSession != null) return AgentChoiceResult.Unavailable
         val session = ChoiceSession(request)
         val posted = CountDownLatch(1)
@@ -1436,7 +1585,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 return@post
             }
             choiceSession = session
-            // 不再创建浮窗，改为发布内嵌面板的请求，UI 层订阅 pendingChoice 渲染。
+            // 不再创建浮窗，改为发布内嵌面板请求，UI 层订阅 pendingChoice 渲染。
             pendingChoiceState.value = request
             session.shown = true
             session.startTimeout()
@@ -1447,14 +1596,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             return AgentChoiceResult.Unavailable
         }
         if (!session.shown) return AgentChoiceResult.Unavailable
-        // 看门狗兜底；主线程被别的活占住时调用线程也不会永久挂住。
+        // 窗口侧已有看门狗；这里再兜一层，主线程被别的活占住时调用线程也不会永久挂住。
         val guardMs = request.timeoutMs.coerceIn(
             AgentChoiceRequest.MinTimeoutMs, AgentChoiceRequest.MaxTimeoutMs,
         ) + ChoiceAwaitSlackMs
         return try {
             val awaited = session.await(guardMs, isCancelled)
-            // 用户点选与主动取消都会先把 choiceSession 清空，这里的条件自然不成立；
-            // 只有运行被停止而用户还没回答时，面板才仍挂在屏幕上，需要补一次收回。
+            // 用户点选与主动取消都会先摘窗并把 choiceSession 清空，这里的条件自然不成立；
+            // 只有运行被停止而用户还没回答时，卡片才仍挂在屏幕上，需要补一次收回。
             val settled = awaited ?: AgentChoiceResult.TimedOut
             mainHandler.post { if (choiceSession === session) dismantleChoiceCard(settled) }
             settled
@@ -1463,6 +1612,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             mainHandler.post { if (choiceSession === session) dismantleChoiceCard(AgentChoiceResult.Cancelled) }
             AgentChoiceResult.Cancelled
         }
+    }
+
+    override fun showCopyCard(title: String, content: String): Boolean {
+        if (destroyed || content.isBlank()) return false
+        // 内嵌复制卡片：不再创建浮窗，改为发布请求，UI 层订阅 pendingCopy 渲染。
+        pendingCopyState.value = CopyCardRequest(title, content)
+        return true
     }
 
     /** UI 层点选/自定义输入/取消后，把结论回传给阻塞中的调用方。 */
@@ -1474,13 +1630,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
     }
 
-    override fun showCopyCard(title: String, content: String): Boolean {
-        if (destroyed || content.isBlank()) return false
-        // 内嵌复制卡片：不再创建浮窗，改为发布请求，UI 层订阅 pendingCopy 渲染。
-        pendingCopyState.value = CopyCardRequest(title, content)
-        return true
-    }
-
     /** 已就绪的窗口管理器；没有可用浮窗权限时返回 null，由调用方退化为文字交互。 */
     private fun overlayWindowManagerOrNull(): WindowManager? {
         windowManager?.let { return it }
@@ -1490,6 +1639,48 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         return wm
     }
 
+    private fun showChoiceCard(wm: WindowManager, session: ChoiceSession) {
+        choiceCardVisible.value = false
+        val card = createOverlayComposeView {
+            AgentChoiceCard(
+                request = session.request,
+                visible = choiceCardVisible.value,
+                onSelect = { index ->
+                    val title = session.request.options.getOrNull(index)?.title.orEmpty()
+                    val result = if (index in session.request.options.indices) {
+                        AgentChoiceResult.Selected(index, title)
+                    } else {
+                        AgentChoiceResult.Cancelled
+                    }
+                    // 让选中态先亮一下再收起，否则点完卡片瞬间消失，用户不知道点中了哪个。
+                    // pending 先落：这段延迟里按返回或超时都不能把已选中的结论改成取消。
+                    session.pending = result
+                    mainHandler.postDelayed({ dismantleChoiceCard(result) }, ChoiceConfirmDelayMs)
+                },
+                onDismiss = { dismantleChoiceCard(AgentChoiceResult.Cancelled) },
+            )
+        }
+        val lp = interactionCardLayoutParams()
+        val added = runCatching { wm.addView(card, lp) }
+        if (added.isFailure) {
+            AndroidAgentLogger.warnThrottled("runtime_choice_card_add_view_failed") {
+                "Agent runtime choice card addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
+            }
+            choiceSession = null
+            session.finish(AgentChoiceResult.Unavailable)
+            return
+        }
+        choiceView = card
+        choiceWindowManager = wm
+        registerChoiceBack(card)
+        card.requestFocus()
+        // addView 当帧还没有可用尺寸，立刻置可见会让弹簧从错误的位置起步；
+        // 等第一帧布局完成再放动画，进场才是完整的一段。
+        card.post { if (choiceView === card) choiceCardVisible.value = true }
+        session.shown = true
+        session.startTimeout()
+        AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.TAP)
+    }
 
     private fun showCopyOverlay(wm: WindowManager, title: String, content: String): Boolean {
         // 上一张还在收起动画里：先把它落定，避免两张卡片同时占位。
@@ -1549,10 +1740,23 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun dismantleChoiceCard(result: AgentChoiceResult) {
         val session = choiceSession ?: return
         choiceSession = null
+        // 内嵌面板随请求清空而收起。
+        pendingChoiceState.value = null
         // 用户已经点过的选项优先于晚到的取消/超时。
         val settledResult = session.pending ?: result
-        // 内嵌面板不再有浮窗需要摘除，清空请求状态让 UI 收起即可。
-        pendingChoiceState.value = null
+        unregisterChoiceBack()
+        choiceCardVisible.value = false
+        val view = choiceView
+        choiceView = null
+        choiceWindowManager = null
+        if (view != null && choiceTeardownTask == null) {
+            val task = Runnable {
+                choiceTeardownTask = null
+                runCatching { overlayWindowManagerOrNull()?.removeView(view) }
+            }
+            choiceTeardownTask = task
+            mainHandler.postDelayed(task, InteractionCardExitMs)
+        }
         session.finish(settledResult)
     }
 
@@ -1560,6 +1764,19 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         if (task != null) mainHandler.removeCallbacks(task)
     }
 
+    private fun registerChoiceBack(view: View) {
+        unregisterChoiceBack()
+        val dispatcher = view.findOnBackInvokedDispatcher() ?: return
+        val callback = OnBackInvokedCallback { dismantleChoiceCard(AgentChoiceResult.Cancelled) }
+        dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, callback)
+        choiceBack = dispatcher to callback
+    }
+
+    private fun unregisterChoiceBack() {
+        val (dispatcher, callback) = choiceBack ?: return
+        choiceBack = null
+        runCatching { dispatcher.unregisterOnBackInvokedCallback(callback) }
+    }
 
     /** 与结果卡片同宽同底，但不吃掉半屏：窗口高度交给内容自己决定。 */
     private fun interactionCardLayoutParams(): WindowManager.LayoutParams =
@@ -1665,6 +1882,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         glowView = null
         capsuleParams = null
         glowParams = null
+        // 两个窗口都摘了，浮窗回到未挂载；探针窗口跟随常亮状态，这里不强制摘除，
+        // 由任务结束时的 setKeepScreenOn(false) 统一收回。
+        overlayMounted = false
     }
 
     private fun dismissAndStop() {
@@ -1696,6 +1916,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         resultCardParams = null
         capsuleParams = null
         glowParams = null
+        overlayMounted = false
+        removeKeepScreenOnProbe()
         windowManager = null
     }
 
@@ -1726,10 +1948,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private val keepScreenOnState = MutableStateFlow(false)
         val keepScreenOn = keepScreenOnState.asStateFlow()
 
-        // 等待用户拍板的选项请求；UI 层订阅它渲染内嵌面板，非空即正在等待。
+        // 内嵌选项面板：工具线程发布请求，UI 层订阅渲染。
         private val pendingChoiceState = MutableStateFlow<AgentChoiceRequest?>(null)
         val pendingChoice = pendingChoiceState.asStateFlow()
 
+        // 内嵌复制卡片：同选项面板，不再走系统浮窗。
         private val pendingCopyState = MutableStateFlow<CopyCardRequest?>(null)
         val pendingCopy = pendingCopyState.asStateFlow()
 

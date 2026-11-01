@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.browser.BrowserSessionSnapshot
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.ui.app.AgentConversationRevisionReducer
@@ -175,6 +176,12 @@ internal fun AgentChatBody(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
     messageStartIndex: Int = 0,
     historyLoadState: ConversationHistoryLoadState = ConversationHistoryLoadState.Idle,
     onLoadEarlierMessages: () -> Unit = {},
@@ -298,6 +305,8 @@ internal fun AgentChatBody(
             onChoiceSelect = onChoiceSelect,
             onChoiceCustomInput = onChoiceCustomInput,
             onChoiceDismiss = onChoiceDismiss,
+            pendingCopy = pendingCopy,
+            onCopyDismiss = onCopyDismiss,
             currentBrowserMessageId = currentBrowserMessageId,
             hasEarlierMessages = hasEarlierMessages,
             messageStartIndex = messageStartIndex,
@@ -420,6 +429,8 @@ private fun AgentChatScaffold(
                 onChoiceSelect = onChoiceSelect,
                 onChoiceCustomInput = onChoiceCustomInput,
                 onChoiceDismiss = onChoiceDismiss,
+                pendingCopy = pendingCopy,
+                onCopyDismiss = onCopyDismiss,
             )
         },
     ) { innerPadding ->
@@ -1139,6 +1150,8 @@ private fun AgentChatBottomBar(
                 onChoiceSelect = onChoiceSelect,
                 onChoiceCustomInput = onChoiceCustomInput,
                 onChoiceDismiss = onChoiceDismiss,
+                pendingCopy = pendingCopy,
+                onCopyDismiss = onCopyDismiss,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

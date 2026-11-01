@@ -379,6 +379,8 @@ fun AgentAppRoot(
                     AgentHomeScreen(
                         state = agentState.homeState,
                         modelPickerState = agentState.modelPickerState,
+                        pendingChoice = agentState.pendingChoice,
+                        pendingCopy = agentState.pendingCopy,
                         conversationKey = agentState.conversationPaneState.selectedConversationId,
                         onAction = { action ->
                             when (action) {
@@ -425,6 +427,8 @@ fun AgentAppRoot(
                                 AgentHomeAction.OpenSettings -> pushRoute(AppRoute.Settings)
                                 AgentHomeAction.OpenBrowser -> openConversationBrowser()
                                 AgentHomeAction.ExpandRunTrace -> Unit
+                                is AgentHomeAction.ResolveChoice -> agentState.resolveChoice(action.result)
+                                AgentHomeAction.DismissCopyCard -> agentState.dismissCopyCard()
                             }
                         },
                         isLoadingConversation = agentState.isLoadingConversation,

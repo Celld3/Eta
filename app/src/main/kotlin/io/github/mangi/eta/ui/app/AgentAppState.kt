@@ -17,6 +17,9 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.AgentFileReferenceGateway
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.media.AgentImageCodec
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.AgentChoiceResult
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.model.AgentFileReference
 import io.github.mangi.eta.agent.model.AgentFileReferenceKind
 import io.github.mangi.eta.agent.model.AgentFileReferencePolicy
@@ -28,6 +31,8 @@ import io.github.mangi.eta.agent.roleplay.CharacterCardCodec
 import io.github.mangi.eta.agent.roleplay.RoleplayMessageLink
 import io.github.mangi.eta.agent.roleplay.RoleplayMessageState
 import io.github.mangi.eta.data.repository.CharacterRepository
+import io.github.mangi.eta.agent.runtime.AgentInteraction
+import io.github.mangi.eta.agent.runtime.AgentRuntimeService
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.GuiControlStatus
 import io.github.mangi.eta.agent.runtime.AgentConversationIdentity
@@ -146,6 +151,18 @@ internal class AgentAppState(
     var modelPickerState by mutableStateOf(AgentModelPickerUiState())
         private set
 
+    /**
+     * 内嵌交互请求独立于会话状态持有。
+     *
+     * 会话状态在流式输出期间每帧都会被整体替换，若把交互请求塞进 [homeState]，
+     * 下一帧就会被更早的状态快照覆盖掉；这里单独放一份，只有交互本身能改它。
+     */
+    var pendingChoice by mutableStateOf<AgentChoiceRequest?>(null)
+        private set
+
+    var pendingCopy by mutableStateOf<CopyCardRequest?>(null)
+        private set
+
     var conversationPaneState by mutableStateOf(
         ConversationPaneUiState(
             conversations = emptyList(),
@@ -158,6 +175,8 @@ internal class AgentAppState(
     init {
         refreshConversationSummaries()
         observeRuntimeSelection()
+        observePendingChoice()
+        observePendingCopy()
         runtimeRecoveryInProgress.set(true)
         scope.launch(Dispatchers.IO) {
             try {
@@ -165,6 +184,24 @@ internal class AgentAppState(
                 importArchivedExternalRuns()
             } finally {
                 runtimeRecoveryInProgress.set(false)
+            }
+        }
+    }
+
+    /** 订阅运行时发布的内嵌选项请求，驱动输入框上方面板渲染。 */
+    private fun observePendingChoice() {
+        scope.launch {
+            AgentRuntimeService.pendingChoice.collectLatest { request ->
+                pendingChoice = request
+            }
+        }
+    }
+
+    /** 订阅运行时发布的内嵌复制请求，驱动输入框上方复制卡片渲染。 */
+    private fun observePendingCopy() {
+        scope.launch {
+            AgentRuntimeService.pendingCopy.collectLatest { request ->
+                pendingCopy = request
             }
         }
     }
@@ -1135,6 +1172,16 @@ internal class AgentAppState(
         submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = false)
     }
 
+    /** 内嵌选项面板的结论回传给阻塞中的工具线程。 */
+    fun resolveChoice(result: AgentChoiceResult) {
+        AgentInteraction.resolveChoice(result)
+    }
+
+    /** 内嵌复制卡片收起（用户点关闭/复制后自动收起），清空复制请求状态。 */
+    fun dismissCopyCard() {
+        pendingCopy = null
+    }
+
     fun interruptAndSendCurrentMessage(submittedText: String? = null) {
         submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = true)
     }
@@ -1173,6 +1220,12 @@ internal class AgentAppState(
         submittedText: String?,
         immediateInterrupt: Boolean,
     ) {
+        // 面板还挂着时，用户在底部主输入框直接发送 = 取消这次选择、以文字作答。
+        // 先解除阻塞中的 ask_choice 并清掉面板，避免面板残留且 X 关不掉。
+        if (pendingChoice != null) {
+            AgentInteraction.resolveChoice(AgentChoiceResult.Cancelled)
+            pendingChoice = null
+        }
         if (!homeState.isConversationLoaded || homeState.isCompacting ||
             selectedConversationId in pendingConversationDeletes) return
         val prompt = (submittedText ?: homeState.input).trim()

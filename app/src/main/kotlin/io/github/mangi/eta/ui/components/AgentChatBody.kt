@@ -76,6 +76,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.browser.BrowserSessionSnapshot
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.ui.app.AgentConversationRevisionReducer
@@ -170,6 +172,12 @@ internal fun AgentChatBody(
     onRunTraceClick: () -> Unit,
     onOpenBrowser: () -> Unit,
     hasEarlierMessages: Boolean = false,
+    pendingChoice: AgentChoiceRequest? = null,
+    onChoiceSelect: (Int) -> Unit = {},
+    onChoiceCustomInput: (String) -> Unit = {},
+    onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
     messageStartIndex: Int = 0,
     historyLoadState: ConversationHistoryLoadState = ConversationHistoryLoadState.Idle,
     onLoadEarlierMessages: () -> Unit = {},
@@ -289,6 +297,12 @@ internal fun AgentChatBody(
             onSuggestionClick = onSuggestionClick,
             onRunTraceClick = onRunTraceClick,
             onOpenBrowser = onOpenBrowser,
+            pendingChoice = pendingChoice,
+            onChoiceSelect = onChoiceSelect,
+            onChoiceCustomInput = onChoiceCustomInput,
+            onChoiceDismiss = onChoiceDismiss,
+            pendingCopy = pendingCopy,
+            onCopyDismiss = onCopyDismiss,
             currentBrowserMessageId = currentBrowserMessageId,
             hasEarlierMessages = hasEarlierMessages,
             messageStartIndex = messageStartIndex,
@@ -345,6 +359,12 @@ private fun AgentChatScaffold(
     onSuggestionClick: (String) -> Unit,
     onRunTraceClick: () -> Unit,
     onOpenBrowser: () -> Unit,
+    pendingChoice: AgentChoiceRequest? = null,
+    onChoiceSelect: (Int) -> Unit = {},
+    onChoiceCustomInput: (String) -> Unit = {},
+    onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
     currentBrowserMessageId: String?,
     hasEarlierMessages: Boolean,
     messageStartIndex: Int,
@@ -403,6 +423,12 @@ private fun AgentChatScaffold(
                 onAttachFilePath = onAttachFilePath,
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
+                pendingChoice = pendingChoice,
+                onChoiceSelect = onChoiceSelect,
+                onChoiceCustomInput = onChoiceCustomInput,
+                onChoiceDismiss = onChoiceDismiss,
+                pendingCopy = pendingCopy,
+                onCopyDismiss = onCopyDismiss,
             )
         },
     ) { innerPadding ->
@@ -1022,6 +1048,12 @@ private fun AgentChatBottomBar(
     onAttachFilePath: (String) -> Unit,
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
+    pendingChoice: AgentChoiceRequest? = null,
+    onChoiceSelect: (Int) -> Unit = {},
+    onChoiceCustomInput: (String) -> Unit = {},
+    onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -1114,6 +1146,12 @@ private fun AgentChatBottomBar(
                 onAttachFilePath = onAttachFilePath,
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
+                pendingChoice = pendingChoice,
+                onChoiceSelect = onChoiceSelect,
+                onChoiceCustomInput = onChoiceCustomInput,
+                onChoiceDismiss = onChoiceDismiss,
+                pendingCopy = pendingCopy,
+                onCopyDismiss = onCopyDismiss,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

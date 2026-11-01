@@ -16,6 +16,9 @@ import io.github.mangi.eta.ui.model.ConversationHistoryLoadState
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.roleplayChatUi
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.AgentChoiceResult
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 
 /**
  * AgentChatHome：首屏为聊天主舞台。
@@ -29,6 +32,8 @@ internal fun AgentHomeScreen(
     modelPickerState: AgentModelPickerUiState,
     conversationKey: String?,
     onAction: (AgentHomeAction) -> Unit,
+    pendingChoice: AgentChoiceRequest? = null,
+    pendingCopy: CopyCardRequest? = null,
     isLoadingConversation: Boolean = false,
     conversationLoadFailed: Boolean = false,
     historyLoadState: ConversationHistoryLoadState = ConversationHistoryLoadState.Idle,
@@ -96,6 +101,19 @@ internal fun AgentHomeScreen(
                     historyLoadState = historyLoadState,
                     onLoadEarlierMessages = { onAction(AgentHomeAction.LoadEarlierMessages) },
                     onHistoryViewportChanged = { onAction(AgentHomeAction.HistoryViewportChanged(it)) },
+                    pendingChoice = pendingChoice,
+                    onChoiceSelect = { index ->
+                        val title = pendingChoice?.options?.getOrNull(index)?.title.orEmpty()
+                        onAction(AgentHomeAction.ResolveChoice(AgentChoiceResult.Selected(index, title)))
+                    },
+                    onChoiceCustomInput = { text ->
+                        onAction(AgentHomeAction.ResolveChoice(AgentChoiceResult.CustomInput(text)))
+                    },
+                    onChoiceDismiss = {
+                        onAction(AgentHomeAction.ResolveChoice(AgentChoiceResult.Cancelled))
+                    },
+                    pendingCopy = pendingCopy,
+                    onCopyDismiss = { onAction(AgentHomeAction.DismissCopyCard) },
                     isDrawerOpen = isDrawerOpen,
                     modifier = modifier,
                 )

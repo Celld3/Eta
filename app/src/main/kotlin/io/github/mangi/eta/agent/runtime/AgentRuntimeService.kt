@@ -51,8 +51,8 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayGlow
 import io.github.mangi.eta.agent.overlay.ScreenCornerRadii
 import io.github.mangi.eta.agent.overlay.AgentOverlayCapsule
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
-import io.github.mangi.eta.agent.overlay.AgentChoiceCard
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.overlay.AgentCopyCard
 import io.github.mangi.eta.agent.overlay.InteractionCardExitMs
@@ -125,14 +125,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var resultCardParams: WindowManager.LayoutParams? = null
     private var resultCardBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
 
-    /** 选择卡片的窗口；与结果卡片分开持有，避免任务收尾时被一起拆掉。 */
-    private var choiceView: ComposeView? = null
-    private var choiceWindowManager: WindowManager? = null
-    private var choiceBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
     @Volatile private var choiceSession: ChoiceSession? = null
-    /** 卡片可见性：置 false 后 Compose 侧先播收起动画，窗口层等动画走完再摘窗。 */
-    private val choiceCardVisible = mutableStateOf(false)
-    private var choiceTeardownTask: Runnable? = null
     /** 复制卡片是与运行并行的轻量提示，只保留最新一张。 */
     private var copyView: ComposeView? = null
     private var copyWindowManager: WindowManager? = null
@@ -251,17 +244,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         choiceSession?.finish(AgentChoiceResult.Unavailable)
         // 常亮探针必须兜底摘除，否则异常退出时屏幕会一直亮着。
         removeKeepScreenOnProbe()
-        cancelCardTeardown(choiceTeardownTask)
-        choiceTeardownTask = null
         cancelCardTeardown(copyTeardownTask)
         copyTeardownTask = null
-        choiceView?.let { view -> runCatching { choiceWindowManager?.removeView(view) } }
         copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
-        unregisterChoiceBack()
-        choiceView = null
         copyView = null
         choiceSession = null
-        choiceWindowManager = null
         copyWindowManager = null
         VirtualDisplayController.release(this)
         unregisterResultCardBack()
@@ -1584,7 +1571,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 return@post
             }
             choiceSession = session
-            showChoiceCard(wm, session)
+            // 不再创建浮窗，改为发布内嵌面板请求，UI 层订阅 pendingChoice 渲染。
+            pendingChoiceState.value = request
+            session.shown = true
+            session.startTimeout()
             posted.countDown()
         }
         if (!posted.await(ChoicePostTimeoutMs, TimeUnit.MILLISECONDS)) {
@@ -1612,31 +1602,18 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     override fun showCopyCard(title: String, content: String): Boolean {
         if (destroyed || content.isBlank()) return false
-        val wm = if (Looper.myLooper() == Looper.getMainLooper()) {
-            overlayWindowManagerOrNull()
-        } else {
-            val holder = AtomicReference<WindowManager?>()
-            val posted = CountDownLatch(1)
-            mainHandler.post {
-                holder.set(overlayWindowManagerOrNull())
-                posted.countDown()
-            }
-            posted.await(CopyPostTimeoutMs, TimeUnit.MILLISECONDS)
-            holder.get()
-        } ?: return false
-        val added = if (Looper.myLooper() == Looper.getMainLooper()) {
-            showCopyOverlay(wm, title, content)
-        } else {
-            val result = AtomicBoolean(false)
-            val posted = CountDownLatch(1)
-            mainHandler.post {
-                result.set(showCopyOverlay(wm, title, content))
-                posted.countDown()
-            }
-            posted.await(CopyPostTimeoutMs, TimeUnit.MILLISECONDS)
-            result.get()
+        // 内嵌复制卡片：不再创建浮窗，改为发布请求，UI 层订阅 pendingCopy 渲染。
+        pendingCopyState.value = CopyCardRequest(title, content)
+        return true
+    }
+
+    /** UI 层点选/自定义输入/取消后，把结论回传给阻塞中的调用方。 */
+    override fun resolveChoice(result: AgentChoiceResult) {
+        mainHandler.post {
+            choiceSession?.pending = result
+            choiceSession?.let { dismantleChoiceCard(result) }
+            pendingChoiceState.value = null
         }
-        return added
     }
 
     /** 已就绪的窗口管理器；没有可用浮窗权限时返回 null，由调用方退化为文字交互。 */
@@ -1648,48 +1625,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         return wm
     }
 
-    private fun showChoiceCard(wm: WindowManager, session: ChoiceSession) {
-        choiceCardVisible.value = false
-        val card = createOverlayComposeView {
-            AgentChoiceCard(
-                request = session.request,
-                visible = choiceCardVisible.value,
-                onSelect = { index ->
-                    val title = session.request.options.getOrNull(index)?.title.orEmpty()
-                    val result = if (index in session.request.options.indices) {
-                        AgentChoiceResult.Selected(index, title)
-                    } else {
-                        AgentChoiceResult.Cancelled
-                    }
-                    // 让选中态先亮一下再收起，否则点完卡片瞬间消失，用户不知道点中了哪个。
-                    // pending 先落：这段延迟里按返回或超时都不能把已选中的结论改成取消。
-                    session.pending = result
-                    mainHandler.postDelayed({ dismantleChoiceCard(result) }, ChoiceConfirmDelayMs)
-                },
-                onDismiss = { dismantleChoiceCard(AgentChoiceResult.Cancelled) },
-            )
-        }
-        val lp = interactionCardLayoutParams()
-        val added = runCatching { wm.addView(card, lp) }
-        if (added.isFailure) {
-            AndroidAgentLogger.warnThrottled("runtime_choice_card_add_view_failed") {
-                "Agent runtime choice card addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
-            }
-            choiceSession = null
-            session.finish(AgentChoiceResult.Unavailable)
-            return
-        }
-        choiceView = card
-        choiceWindowManager = wm
-        registerChoiceBack(card)
-        card.requestFocus()
-        // addView 当帧还没有可用尺寸，立刻置可见会让弹簧从错误的位置起步；
-        // 等第一帧布局完成再放动画，进场才是完整的一段。
-        card.post { if (choiceView === card) choiceCardVisible.value = true }
-        session.shown = true
-        session.startTimeout()
-        AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.TAP)
-    }
 
     private fun showCopyOverlay(wm: WindowManager, title: String, content: String): Boolean {
         // 上一张还在收起动画里：先把它落定，避免两张卡片同时占位。
@@ -1749,21 +1684,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun dismantleChoiceCard(result: AgentChoiceResult) {
         val session = choiceSession ?: return
         choiceSession = null
+        // 内嵌面板没有浮窗需要摘除，清空请求状态让 UI 收起即可。
+        pendingChoiceState.value = null
         // 用户已经点过的选项优先于晚到的取消/超时。
         val settledResult = session.pending ?: result
-        unregisterChoiceBack()
-        choiceCardVisible.value = false
-        val view = choiceView
-        choiceView = null
-        choiceWindowManager = null
-        if (view != null && choiceTeardownTask == null) {
-            val task = Runnable {
-                choiceTeardownTask = null
-                runCatching { overlayWindowManagerOrNull()?.removeView(view) }
-            }
-            choiceTeardownTask = task
-            mainHandler.postDelayed(task, InteractionCardExitMs)
-        }
         session.finish(settledResult)
     }
 
@@ -1771,19 +1695,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         if (task != null) mainHandler.removeCallbacks(task)
     }
 
-    private fun registerChoiceBack(view: View) {
-        unregisterChoiceBack()
-        val dispatcher = view.findOnBackInvokedDispatcher() ?: return
-        val callback = OnBackInvokedCallback { dismantleChoiceCard(AgentChoiceResult.Cancelled) }
-        dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, callback)
-        choiceBack = dispatcher to callback
-    }
-
-    private fun unregisterChoiceBack() {
-        val (dispatcher, callback) = choiceBack ?: return
-        choiceBack = null
-        runCatching { dispatcher.unregisterOnBackInvokedCallback(callback) }
-    }
 
     /** 与结果卡片同宽同底，但不吃掉半屏：窗口高度交给内容自己决定。 */
     private fun interactionCardLayoutParams(): WindowManager.LayoutParams =
@@ -1954,6 +1865,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         // 只投影到 App 与 GUI 浮层的现有窗口，窗口不可见时由系统恢复息屏。
         private val keepScreenOnState = MutableStateFlow(false)
         val keepScreenOn = keepScreenOnState.asStateFlow()
+
+        // 内嵌选项面板：工具线程发布请求，UI 层订阅渲染。
+        private val pendingChoiceState = MutableStateFlow<AgentChoiceRequest?>(null)
+        val pendingChoice = pendingChoiceState.asStateFlow()
+
+        // 内嵌复制卡片：同选项面板，不再走系统浮窗。
+        private val pendingCopyState = MutableStateFlow<CopyCardRequest?>(null)
+        val pendingCopy = pendingCopyState.asStateFlow()
 
         internal fun onEtaUiVisibilityChanged() {
             val instance = activeInstance ?: return

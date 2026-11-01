@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.model
 
+import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.data.model.ReasoningEffort
 
 sealed interface AgentHomeAction {
@@ -33,6 +34,8 @@ sealed interface AgentHomeAction {
     data object OpenSettings : AgentHomeAction
     data object OpenBrowser : AgentHomeAction
     data object ExpandRunTrace : AgentHomeAction
+    data class ResolveChoice(val result: AgentChoiceResult) : AgentHomeAction
+    data object DismissCopyCard : AgentHomeAction
 }
 
 sealed interface PermissionHealthAction {

@@ -7,6 +7,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -14,6 +16,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -80,6 +84,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.AgentInlineChoicePanel
+import io.github.mangi.eta.agent.overlay.AgentInlineCopyCard
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -145,6 +153,12 @@ internal fun AgentChatInputBar(
     onAttachFilePath: (String) -> Unit,
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
+    pendingChoice: AgentChoiceRequest? = null,
+    onChoiceSelect: (Int) -> Unit = {},
+    onChoiceCustomInput: (String) -> Unit = {},
+    onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -250,6 +264,54 @@ internal fun AgentChatInputBar(
                 // 与输入框内正文同一起点（容器 10dp + 文本 8dp）。
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
             )
+        }
+
+        // 退出动画期间请求已经变成 null，内容会立刻消失导致收缩没有参照；
+        // 这里留住最后一次非空值，让退场那一段仍按原尺寸播完。
+        var lastChoice by remember { mutableStateOf<AgentChoiceRequest?>(null) }
+        if (pendingChoice != null) lastChoice = pendingChoice
+        AnimatedVisibility(
+            visible = pendingChoice != null,
+            enter = slideInVertically(
+                animationSpec = tween(240, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 4 },
+            ) + fadeIn(tween(200)),
+            exit = slideOutVertically(
+                animationSpec = tween(200, easing = FastOutLinearInEasing),
+                targetOffsetY = { it / 4 },
+            ) + fadeOut(tween(160)),
+        ) {
+            lastChoice?.let { choice ->
+                AgentInlineChoicePanel(
+                    request = choice,
+                    onSelect = onChoiceSelect,
+                    onCustomInput = onChoiceCustomInput,
+                    onDismiss = onChoiceDismiss,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+        }
+
+        var lastCopy by remember { mutableStateOf<CopyCardRequest?>(null) }
+        if (pendingCopy != null) lastCopy = pendingCopy
+        AnimatedVisibility(
+            visible = pendingCopy != null,
+            enter = slideInVertically(
+                animationSpec = tween(240, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 4 },
+            ) + fadeIn(tween(200)),
+            exit = slideOutVertically(
+                animationSpec = tween(200, easing = FastOutLinearInEasing),
+                targetOffsetY = { it / 4 },
+            ) + fadeOut(tween(160)),
+        ) {
+            lastCopy?.let { copy ->
+                AgentInlineCopyCard(
+                    request = copy,
+                    onDismiss = onCopyDismiss,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
         }
 
         Box(

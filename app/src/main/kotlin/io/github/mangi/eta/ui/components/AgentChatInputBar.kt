@@ -8,6 +8,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -260,13 +262,18 @@ internal fun AgentChatInputBar(
 
         AnimatedVisibility(
             visible = pendingChoice != null,
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(100)) + shrinkVertically(tween(150)),
+            enter = expandVertically(
+                spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                expandFrom = Alignment.Top,
+            ) + fadeIn(tween(220)),
+            exit = shrinkVertically(
+                spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
+                shrinkTowards = Alignment.Top,
+            ) + fadeOut(tween(200)),
         ) {
             pendingChoice?.let { choice ->
                 AgentInlineChoicePanel(
                     request = choice,
-                    visible = true,
                     onSelect = onChoiceSelect,
                     onCustomInput = onChoiceCustomInput,
                     onDismiss = onChoiceDismiss,

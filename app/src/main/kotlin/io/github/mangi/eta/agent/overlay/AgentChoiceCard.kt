@@ -301,7 +301,6 @@ private val InlineChoiceListMaxHeight = 220.dp
 @Composable
 internal fun AgentInlineChoicePanel(
     request: AgentChoiceRequest,
-    visible: Boolean,
     onSelect: (Int) -> Unit,
     onCustomInput: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -311,15 +310,7 @@ internal fun AgentInlineChoicePanel(
     var settled by remember { mutableStateOf(false) }
     var chosenIndex by remember { mutableIntStateOf(-1) }
     var collapsed by remember { mutableStateOf(false) }
-    var appeared by remember { mutableStateOf(false) }
     val customField = rememberTextFieldState()
-    val progress by rememberCardProgress(visible, "inline_choice_progress")
-    LaunchedEffect(Unit) { appeared = true }
-    val reveal by animateFloatAsState(
-        targetValue = if (appeared) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
-        label = "inline_choice_reveal",
-    )
 
     fun choose(index: Int) {
         if (settled) return
@@ -331,15 +322,6 @@ internal fun AgentInlineChoicePanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                // 进场：从 92% 缩放 + 12dp 上浮 + 淡入，一段弹簧完成，收起时反向收回。
-                alpha = progress * reveal
-                val scale = CardEnterExitScaleStart + (1f - CardEnterExitScaleStart) * progress
-                scaleX = scale
-                scaleY = scale
-                translationY = (1f - reveal) * 12.dp.toPx()
-                transformOrigin = TransformOrigin(0.5f, 1f)
-            }
             .clip(RoundedCornerShape(22.dp))
             .background(MiuixTheme.colorScheme.surface)
             .border(

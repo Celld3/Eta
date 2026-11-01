@@ -1,8 +1,6 @@
 package io.github.mangi.eta.agent.overlay
 
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,21 +40,15 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -69,7 +60,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -119,23 +109,6 @@ sealed interface AgentChoiceResult {
  * 否则 removeView 会把最后一帧直接抹掉，看起来就是硬闪一下。
  */
 internal const val InteractionCardExitMs = 190L
-
-/** 卡片收起与进场共用的进度：0 完全隐藏，1 完全就位。 */
-@Composable
-private fun rememberCardProgress(visible: Boolean, label: String): State<Float> =
-    animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        // 进场用弹簧，落位时有一点软着陆；收起用短促的减速曲线。
-        // 两段都只驱动一个进度值，透明度与缩放不会各自跑偏。
-        animationSpec = if (visible) {
-            spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
-        } else {
-            tween(durationMillis = InteractionCardExitMs.toInt(), easing = FastOutLinearInEasing)
-        },
-        label = label,
-    )
-
-
 
 @Composable
 private fun ChoiceRow(
@@ -200,100 +173,6 @@ private fun ChoiceRow(
         }
     }
 }
-
-/**
- * 复制卡片：模型把一段需要落地的正文交给用户时弹出，一键写剪贴板。
- *
- * 它不阻塞运行：用户不点也照样继续，卡片自己收起；点过之后按钮变成已复制再收起。
- * 收起同样走窗口层的两段式：先播动画，再由窗口层摘窗。
- */
-@Composable
-internal fun AgentCopyCard(
-    title: String,
-    content: String,
-    visible: Boolean,
-    onDismiss: () -> Unit,
-) {
-    var copied by remember { mutableStateOf(false) }
-    @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
-    val progressState = rememberCardProgress(visible, "copy_progress")
-    val progress by progressState
-    // 只在进场动画落位后才开始计时，否则弹簧还没停卡片就自己走了。
-    LaunchedEffect(copied) {
-        snapshotFlow { progressState.value }.first { it >= 1f }
-        delay(if (copied) CopyCardAfterCopyMs else CopyCardAutoDismissMs)
-        onDismiss()
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    alpha = progress
-                    val scale = CardEnterExitScaleStart + (1f - CardEnterExitScaleStart) * progress
-                    scaleX = scale
-                    scaleY = scale
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                }
-                .shadow(16.dp, RoundedCornerShape(ChoiceCardCorner), ambientColor = Color.Black.copy(alpha = 0.18f))
-                .clip(RoundedCornerShape(ChoiceCardCorner))
-                .background(MiuixTheme.colorScheme.surface),
-        ) {
-            Text(
-                text = title.ifBlank { stringResource(R.string.overlay_copy_title) },
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
-            )
-            Text(
-                text = content,
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 3,
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 6.dp),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                TextButton(
-                    text = stringResource(
-                        if (copied) R.string.copy_copied else R.string.overlay_copy_action,
-                    ),
-                    onClick = {
-                        clipboard.setText(AnnotatedString(content))
-                        copied = true
-                    },
-                    modifier = Modifier.weight(1f),
-                    minHeight = 44.dp,
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                )
-                TextButton(
-                    text = stringResource(R.string.overlay_copy_close),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    minHeight = 44.dp,
-                )
-            }
-        }
-    }
-}
-
-private val ChoiceCardCorner = 28.dp
-private val ChoiceCardMaxHeight = 460.dp
-
-/** 进出场的起始缩放；1 减去它等于弹簧要走的剩余行程。 */
-private const val CardEnterExitScaleStart = 0.92f
-
-private const val CopyCardAfterCopyMs = 900L
-private const val CopyCardAutoDismissMs = 5_000L
 
 /** 内嵌面板选项区的固定最大高度；超出后由 LazyColumn 内部滚动。 */
 private val InlineChoiceListMaxHeight = 220.dp
@@ -502,8 +381,8 @@ internal fun AgentInlineChoicePanel(
 /**
  * 对话输入框上方内嵌的复制卡片。
  *
- * 与浮窗版 [AgentCopyCard] 语义一致：不阻塞运行，用户点不点都继续；
- * 点「复制」写入剪贴板并短暂显示「已复制」再收起，或超时自动收起。
+ * 不阻塞运行：用户点不点都继续，卡片自己收起；点「复制」写入剪贴板并短暂
+ * 显示「已复制」再收起。
  * 复用外层的展开/收缩动画，自身只做静态渲染。
  */
 @Composable

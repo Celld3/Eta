@@ -84,6 +84,8 @@ import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentInlineChoicePanel
+import io.github.mangi.eta.agent.overlay.AgentInlineCopyCard
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -153,6 +155,8 @@ internal fun AgentChatInputBar(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -277,6 +281,26 @@ internal fun AgentChatInputBar(
                     onSelect = onChoiceSelect,
                     onCustomInput = onChoiceCustomInput,
                     onDismiss = onChoiceDismiss,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = pendingCopy != null,
+            enter = expandVertically(
+                spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                expandFrom = Alignment.Top,
+            ) + fadeIn(tween(220)),
+            exit = shrinkVertically(
+                spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
+                shrinkTowards = Alignment.Top,
+            ) + fadeOut(tween(200)),
+        ) {
+            pendingCopy?.let { copy ->
+                AgentInlineCopyCard(
+                    request = copy,
+                    onDismiss = onCopyDismiss,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }

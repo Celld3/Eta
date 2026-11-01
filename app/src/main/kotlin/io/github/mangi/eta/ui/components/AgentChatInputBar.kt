@@ -7,16 +7,17 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -267,14 +268,14 @@ internal fun AgentChatInputBar(
 
         AnimatedVisibility(
             visible = pendingChoice != null,
-            enter = expandVertically(
-                spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-                expandFrom = Alignment.Top,
+            enter = slideInVertically(
+                animationSpec = tween(260, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 3 },
             ) + fadeIn(tween(220)),
-            exit = shrinkVertically(
-                spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
-                shrinkTowards = Alignment.Top,
-            ) + fadeOut(tween(200)),
+            exit = slideOutVertically(
+                animationSpec = tween(220, easing = FastOutLinearInEasing),
+                targetOffsetY = { it / 3 },
+            ) + fadeOut(tween(180)),
         ) {
             pendingChoice?.let { choice ->
                 AgentInlineChoicePanel(
@@ -289,14 +290,14 @@ internal fun AgentChatInputBar(
 
         AnimatedVisibility(
             visible = pendingCopy != null,
-            enter = expandVertically(
-                spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-                expandFrom = Alignment.Top,
+            enter = slideInVertically(
+                animationSpec = tween(260, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 3 },
             ) + fadeIn(tween(220)),
-            exit = shrinkVertically(
-                spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
-                shrinkTowards = Alignment.Top,
-            ) + fadeOut(tween(200)),
+            exit = slideOutVertically(
+                animationSpec = tween(220, easing = FastOutLinearInEasing),
+                targetOffsetY = { it / 3 },
+            ) + fadeOut(tween(180)),
         ) {
             pendingCopy?.let { copy ->
                 AgentInlineCopyCard(

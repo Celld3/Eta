@@ -52,6 +52,7 @@ import io.github.mangi.eta.agent.overlay.ScreenCornerRadii
 import io.github.mangi.eta.agent.overlay.AgentOverlayCapsule
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
+import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.overlay.AgentCopyCard
 import io.github.mangi.eta.agent.overlay.InteractionCardExitMs
@@ -1475,31 +1476,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     override fun showCopyCard(title: String, content: String): Boolean {
         if (destroyed || content.isBlank()) return false
-        val wm = if (Looper.myLooper() == Looper.getMainLooper()) {
-            overlayWindowManagerOrNull()
-        } else {
-            val holder = AtomicReference<WindowManager?>()
-            val posted = CountDownLatch(1)
-            mainHandler.post {
-                holder.set(overlayWindowManagerOrNull())
-                posted.countDown()
-            }
-            posted.await(CopyPostTimeoutMs, TimeUnit.MILLISECONDS)
-            holder.get()
-        } ?: return false
-        val added = if (Looper.myLooper() == Looper.getMainLooper()) {
-            showCopyOverlay(wm, title, content)
-        } else {
-            val result = AtomicBoolean(false)
-            val posted = CountDownLatch(1)
-            mainHandler.post {
-                result.set(showCopyOverlay(wm, title, content))
-                posted.countDown()
-            }
-            posted.await(CopyPostTimeoutMs, TimeUnit.MILLISECONDS)
-            result.get()
-        }
-        return added
+        // 内嵌复制卡片：不再创建浮窗，改为发布请求，UI 层订阅 pendingCopy 渲染。
+        pendingCopyState.value = CopyCardRequest(title, content)
+        return true
     }
 
     /** 已就绪的窗口管理器；没有可用浮窗权限时返回 null，由调用方退化为文字交互。 */
@@ -1750,6 +1729,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         // 等待用户拍板的选项请求；UI 层订阅它渲染内嵌面板，非空即正在等待。
         private val pendingChoiceState = MutableStateFlow<AgentChoiceRequest?>(null)
         val pendingChoice = pendingChoiceState.asStateFlow()
+
+        private val pendingCopyState = MutableStateFlow<CopyCardRequest?>(null)
+        val pendingCopy = pendingCopyState.asStateFlow()
 
         internal fun onEtaUiVisibilityChanged() {
             val instance = activeInstance ?: return

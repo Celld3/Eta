@@ -425,6 +425,7 @@ fun AgentAppRoot(
                                 AgentHomeAction.OpenSettings -> pushRoute(AppRoute.Settings)
                                 AgentHomeAction.OpenBrowser -> openConversationBrowser()
                                 AgentHomeAction.ExpandRunTrace -> Unit
+                                is AgentHomeAction.ResolveChoice -> agentState.resolveChoice(action.result)
                             }
                         },
                         isLoadingConversation = agentState.isLoadingConversation,

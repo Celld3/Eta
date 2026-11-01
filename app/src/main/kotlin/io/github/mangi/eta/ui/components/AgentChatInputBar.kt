@@ -266,18 +266,22 @@ internal fun AgentChatInputBar(
             )
         }
 
+        // 退出动画期间请求已经变成 null，内容会立刻消失导致收缩没有参照；
+        // 这里留住最后一次非空值，让退场那一段仍按原尺寸播完。
+        var lastChoice by remember { mutableStateOf<AgentChoiceRequest?>(null) }
+        if (pendingChoice != null) lastChoice = pendingChoice
         AnimatedVisibility(
             visible = pendingChoice != null,
             enter = slideInVertically(
-                animationSpec = tween(260, easing = FastOutSlowInEasing),
-                initialOffsetY = { it / 3 },
-            ) + fadeIn(tween(220)),
+                animationSpec = tween(240, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 4 },
+            ) + fadeIn(tween(200)),
             exit = slideOutVertically(
-                animationSpec = tween(220, easing = FastOutLinearInEasing),
-                targetOffsetY = { it / 3 },
-            ) + fadeOut(tween(180)),
+                animationSpec = tween(200, easing = FastOutLinearInEasing),
+                targetOffsetY = { it / 4 },
+            ) + fadeOut(tween(160)),
         ) {
-            pendingChoice?.let { choice ->
+            lastChoice?.let { choice ->
                 AgentInlineChoicePanel(
                     request = choice,
                     onSelect = onChoiceSelect,
@@ -288,18 +292,20 @@ internal fun AgentChatInputBar(
             }
         }
 
+        var lastCopy by remember { mutableStateOf<CopyCardRequest?>(null) }
+        if (pendingCopy != null) lastCopy = pendingCopy
         AnimatedVisibility(
             visible = pendingCopy != null,
             enter = slideInVertically(
-                animationSpec = tween(260, easing = FastOutSlowInEasing),
-                initialOffsetY = { it / 3 },
-            ) + fadeIn(tween(220)),
+                animationSpec = tween(240, easing = FastOutSlowInEasing),
+                initialOffsetY = { it / 4 },
+            ) + fadeIn(tween(200)),
             exit = slideOutVertically(
-                animationSpec = tween(220, easing = FastOutLinearInEasing),
-                targetOffsetY = { it / 3 },
-            ) + fadeOut(tween(180)),
+                animationSpec = tween(200, easing = FastOutLinearInEasing),
+                targetOffsetY = { it / 4 },
+            ) + fadeOut(tween(160)),
         ) {
-            pendingCopy?.let { copy ->
+            lastCopy?.let { copy ->
                 AgentInlineCopyCard(
                     request = copy,
                     onDismiss = onCopyDismiss,

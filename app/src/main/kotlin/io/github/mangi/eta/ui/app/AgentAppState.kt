@@ -1191,6 +1191,12 @@ internal class AgentAppState(
         submittedText: String?,
         immediateInterrupt: Boolean,
     ) {
+        // 面板还挂着时，用户在底部主输入框直接发送 = 取消这次选择、以文字作答。
+        // 先解除阻塞中的 ask_choice 并清掉面板，避免面板残留且 X 关不掉。
+        if (homeState.pendingChoice != null) {
+            AgentInteraction.resolveChoice(AgentChoiceResult.Cancelled)
+            homeState = homeState.copy(pendingChoice = null)
+        }
         if (!homeState.isConversationLoaded || homeState.isCompacting ||
             selectedConversationId in pendingConversationDeletes) return
         val prompt = (submittedText ?: homeState.input).trim()

@@ -178,10 +178,6 @@ internal fun AgentChatBody(
     onChoiceDismiss: () -> Unit = {},
     pendingCopy: CopyCardRequest? = null,
     onCopyDismiss: () -> Unit = {},
-    pendingCopy: CopyCardRequest? = null,
-    onCopyDismiss: () -> Unit = {},
-    pendingCopy: CopyCardRequest? = null,
-    onCopyDismiss: () -> Unit = {},
     messageStartIndex: Int = 0,
     historyLoadState: ConversationHistoryLoadState = ConversationHistoryLoadState.Idle,
     onLoadEarlierMessages: () -> Unit = {},
@@ -367,6 +363,8 @@ private fun AgentChatScaffold(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
     currentBrowserMessageId: String?,
     hasEarlierMessages: Boolean,
     messageStartIndex: Int,
@@ -1054,6 +1052,8 @@ private fun AgentChatBottomBar(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
+    pendingCopy: CopyCardRequest? = null,
+    onCopyDismiss: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier

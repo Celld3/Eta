@@ -4,6 +4,11 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -401,7 +406,7 @@ private const val CopyCardAfterCopyMs = 1_400L
 private const val CopyCardAutoDismissMs = 12_000L
 
 /** 内嵌面板选项区的固定最大高度；超出后由 LazyColumn 内部滚动。 */
-private val InlineChoiceListMaxHeight = 260.dp
+private val InlineChoiceListMaxHeight = 240.dp
 
 /**
  * 对话输入框上方内嵌的选项面板。
@@ -410,8 +415,7 @@ private val InlineChoiceListMaxHeight = 260.dp
  * 自定义输入区打字发送则以输入文字提交，两者二选一。区别是它嵌在聊天界面里，
  * 不再依赖浮窗权限；收起只折叠内容、不结束等待，关闭才是取消。
  *
- * [visible] 驱动整体进场/退场动画；折叠态由内部状态维护，展开/收起通过
- * [onToggleCollapse] 通知宿主（宿主可忽略，仅用于可能的联动）。
+ * 折叠/展开用 expand-shrink 过渡，进场用弹簧缩放+淡入，都在同一段进度里完成。
  */
 @Composable
 internal fun AgentInlineChoicePanel(
@@ -426,8 +430,15 @@ internal fun AgentInlineChoicePanel(
     var settled by remember { mutableStateOf(false) }
     var chosenIndex by remember { mutableIntStateOf(-1) }
     var collapsed by remember { mutableStateOf(false) }
+    var appeared by remember { mutableStateOf(false) }
     val customField = rememberTextFieldState()
     val progress by rememberCardProgress(visible, "inline_choice_progress")
+    LaunchedEffect(Unit) { appeared = true }
+    val reveal by animateFloatAsState(
+        targetValue = if (appeared) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+        label = "inline_choice_reveal",
+    )
 
     fun choose(index: Int) {
         if (settled) return
@@ -440,23 +451,30 @@ internal fun AgentInlineChoicePanel(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                alpha = progress
+                // 进场：从 92% 缩放 + 12dp 上浮 + 淡入，一段弹簧完成，收起时反向收回。
+                alpha = progress * reveal
                 val scale = CardEnterExitScaleStart + (1f - CardEnterExitScaleStart) * progress
                 scaleX = scale
                 scaleY = scale
+                translationY = (1f - reveal) * 12.dp.toPx()
                 transformOrigin = TransformOrigin(0.5f, 1f)
             }
-            .clip(RoundedCornerShape(ChoiceCardCorner))
-            .background(MiuixTheme.colorScheme.secondaryContainer),
+            .clip(RoundedCornerShape(22.dp))
+            .background(MiuixTheme.colorScheme.surface)
+            .border(
+                0.5.dp,
+                MiuixTheme.colorScheme.outline.copy(alpha = 0.4f),
+                RoundedCornerShape(22.dp),
+            ),
     ) {
-        // 顶部 header：标题 + 收起/展开 + 关闭。
+        // 顶部 header：图标 + 标题 + 收起/关闭。
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
                     .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center,
@@ -464,11 +482,11 @@ internal fun AgentInlineChoicePanel(
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
                     contentDescription = null,
-                    modifier = Modifier.size(13.dp),
+                    modifier = Modifier.size(15.dp),
                     tint = MiuixTheme.colorScheme.primary,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = request.title,
                 color = MiuixTheme.colorScheme.onSurface,
@@ -481,8 +499,8 @@ internal fun AgentInlineChoicePanel(
                     collapsed = !collapsed
                     onToggleCollapse()
                 },
-                minWidth = 36.dp,
-                minHeight = 36.dp,
+                minWidth = 34.dp,
+                minHeight = 34.dp,
             ) {
                 Icon(
                     imageVector = if (collapsed) {
@@ -491,93 +509,112 @@ internal fun AgentInlineChoicePanel(
                         Icons.Rounded.KeyboardArrowDown
                     },
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.size(19.dp),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
             }
             IconButton(
                 onClick = { if (!settled) onDismiss() },
-                minWidth = 36.dp,
-                minHeight = 36.dp,
+                minWidth = 34.dp,
+                minHeight = 34.dp,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.size(19.dp),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
             }
         }
 
-        if (!collapsed) {
-            if (request.subtitle.isNotBlank()) {
-                Text(
-                    text = request.subtitle,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                )
-            }
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = InlineChoiceListMaxHeight)
-                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(request.options.size) { index ->
-                    ChoiceRow(
-                        option = request.options[index],
-                        chosen = settled && chosenIndex == index,
-                        onChosen = { choose(index) },
+        // 折叠区：副标题、选项列表、自定义输入、取消；收起时整体 shrink 回去而不是硬切。
+        AnimatedVisibility(
+            visible = !collapsed,
+            enter = expandVertically(spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(180)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
+        ) {
+            Column {
+                if (request.subtitle.isNotBlank()) {
+                    Text(
+                        text = request.subtitle,
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                     )
                 }
-            }
-
-            // 自定义输入区：发送非空文本即作为本轮回复提交。
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BasicTextField(
-                    state = customField,
+                LazyColumn(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(MiuixTheme.colorScheme.surface)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    textStyle = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                    lineLimits = TextFieldLineLimits.SingleLine,
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        val text = customField.text.toString().trim()
-                        if (text.isNotEmpty() && !settled) {
-                            settled = true
-                            onCustomInput(text)
-                        }
-                    },
-                    minWidth = 40.dp,
-                    minHeight = 40.dp,
+                        .fillMaxWidth()
+                        .heightIn(max = InlineChoiceListMaxHeight)
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ArrowUpward,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                    items(request.options.size) { index ->
+                        ChoiceRow(
+                            option = request.options[index],
+                            chosen = settled && chosenIndex == index,
+                            onChosen = { choose(index) },
+                        )
+                    }
                 }
-            }
 
-            TextButton(
-                text = stringResource(R.string.overlay_choice_dismiss),
-                onClick = { if (!settled) onDismiss() },
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-                minHeight = 44.dp,
-            )
+                // 自定义输入：胶囊输入框 + 圆形发送键，与聊天输入条同一套语汇。
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicTextField(
+                        state = customField,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MiuixTheme.colorScheme.surfaceContainer)
+                            .border(
+                                0.5.dp,
+                                MiuixTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                RoundedCornerShape(18.dp),
+                            )
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        textStyle = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                        lineLimits = TextFieldLineLimits.SingleLine,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (customField.text.isBlank()) {
+                                    MiuixTheme.colorScheme.surfaceContainerHigh
+                                } else {
+                                    MiuixTheme.colorScheme.primary
+                                },
+                            )
+                            .clickable {
+                                val text = customField.text.toString().trim()
+                                if (text.isNotEmpty() && !settled) {
+                                    settled = true
+                                    onCustomInput(text)
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ArrowUpward,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (customField.text.isBlank()) {
+                                MiuixTheme.colorScheme.onSurfaceVariantActions
+                            } else {
+                                MiuixTheme.colorScheme.onPrimary
+                            },
+                        )
+                    }
+                }
+
+            }
         }
     }
 }

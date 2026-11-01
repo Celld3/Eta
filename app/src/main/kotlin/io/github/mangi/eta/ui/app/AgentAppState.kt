@@ -17,6 +17,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.AgentFileReferenceGateway
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.media.AgentImageCodec
+import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.model.AgentFileReference
 import io.github.mangi.eta.agent.model.AgentFileReferenceKind
 import io.github.mangi.eta.agent.model.AgentFileReferencePolicy
@@ -28,6 +29,8 @@ import io.github.mangi.eta.agent.roleplay.CharacterCardCodec
 import io.github.mangi.eta.agent.roleplay.RoleplayMessageLink
 import io.github.mangi.eta.agent.roleplay.RoleplayMessageState
 import io.github.mangi.eta.data.repository.CharacterRepository
+import io.github.mangi.eta.agent.runtime.AgentInteraction
+import io.github.mangi.eta.agent.runtime.AgentRuntimeService
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.GuiControlStatus
 import io.github.mangi.eta.agent.runtime.AgentConversationIdentity
@@ -158,6 +161,7 @@ internal class AgentAppState(
     init {
         refreshConversationSummaries()
         observeRuntimeSelection()
+        observePendingChoice()
         runtimeRecoveryInProgress.set(true)
         scope.launch(Dispatchers.IO) {
             try {
@@ -165,6 +169,15 @@ internal class AgentAppState(
                 importArchivedExternalRuns()
             } finally {
                 runtimeRecoveryInProgress.set(false)
+            }
+        }
+    }
+
+    /** 订阅运行时发布的内嵌选项请求，映射到当前会话状态，驱动输入框上方面板渲染。 */
+    private fun observePendingChoice() {
+        scope.launch {
+            AgentRuntimeService.pendingChoice.collectLatest { request ->
+                homeState = homeState.copy(pendingChoice = request)
             }
         }
     }
@@ -1133,6 +1146,11 @@ internal class AgentAppState(
 
     fun sendCurrentMessage(submittedText: String? = null) {
         submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = false)
+    }
+
+    /** 内嵌选项面板的结论回传给阻塞中的工具线程。 */
+    fun resolveChoice(result: AgentChoiceResult) {
+        AgentInteraction.resolveChoice(result)
     }
 
     fun interruptAndSendCurrentMessage(submittedText: String? = null) {

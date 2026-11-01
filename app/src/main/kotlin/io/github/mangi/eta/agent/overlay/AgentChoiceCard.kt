@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
@@ -92,7 +93,7 @@ internal data class AgentChoiceRequest(
 }
 
 /** 选择卡片的终态；不可用时调用方退化为文字提问。 */
-internal sealed interface AgentChoiceResult {
+sealed interface AgentChoiceResult {
     data class Selected(val index: Int, val title: String) : AgentChoiceResult
     /** 用户不走选项，直接在内嵌面板里输入文字发送；文本作为本轮回复提交。 */
     data class CustomInput(val text: String) : AgentChoiceResult
@@ -548,7 +549,7 @@ internal fun AgentInlineChoicePanel(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     textStyle = MiuixTheme.textStyles.body2.copy(color = MiuixTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                    singleLine = true,
+                    lineLimits = TextFieldLineLimits.SingleLine,
                 )
                 Spacer(Modifier.width(8.dp))
                 IconButton(

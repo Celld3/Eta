@@ -162,6 +162,7 @@ internal class AgentAppState(
         refreshConversationSummaries()
         observeRuntimeSelection()
         observePendingChoice()
+        observePendingCopy()
         runtimeRecoveryInProgress.set(true)
         scope.launch(Dispatchers.IO) {
             try {
@@ -178,6 +179,15 @@ internal class AgentAppState(
         scope.launch {
             AgentRuntimeService.pendingChoice.collectLatest { request ->
                 homeState = homeState.copy(pendingChoice = request)
+            }
+        }
+    }
+
+    /** 订阅运行时发布的内嵌复制请求，映射到当前会话状态，驱动输入框上方复制卡片渲染。 */
+    private fun observePendingCopy() {
+        scope.launch {
+            AgentRuntimeService.pendingCopy.collectLatest { request ->
+                homeState = homeState.copy(pendingCopy = request)
             }
         }
     }
@@ -1151,6 +1161,11 @@ internal class AgentAppState(
     /** 内嵌选项面板的结论回传给阻塞中的工具线程。 */
     fun resolveChoice(result: AgentChoiceResult) {
         AgentInteraction.resolveChoice(result)
+    }
+
+    /** 内嵌复制卡片收起（用户点关闭/复制后自动收起），清空复制请求状态。 */
+    fun dismissCopyCard() {
+        homeState = homeState.copy(pendingCopy = null)
     }
 
     fun interruptAndSendCurrentMessage(submittedText: String? = null) {

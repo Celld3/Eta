@@ -20,6 +20,9 @@ internal interface AgentInteractionHost {
 
     /** 非阻塞地弹出复制卡片；同一时间只保留最新一张。返回是否真的显示出来。 */
     fun showCopyCard(title: String, content: String): Boolean
+
+    /** 把内嵌选择面板的结论回传给正在阻塞的调用方；由 UI 层在主线程调用。 */
+    fun resolveChoice(result: AgentChoiceResult)
 }
 
 internal object AgentInteraction {
@@ -39,4 +42,8 @@ internal object AgentInteraction {
 
     fun showCopyCard(title: String, content: String): Boolean =
         host?.showCopyCard(title, content) ?: false
+
+    fun resolveChoice(result: AgentChoiceResult) {
+        host?.resolveChoice(result)
+    }
 }

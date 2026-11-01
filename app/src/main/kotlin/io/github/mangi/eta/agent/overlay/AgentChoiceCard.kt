@@ -292,8 +292,8 @@ private val ChoiceCardMaxHeight = 460.dp
 /** 进出场的起始缩放；1 减去它等于弹簧要走的剩余行程。 */
 private const val CardEnterExitScaleStart = 0.92f
 
-private const val CopyCardAfterCopyMs = 1_400L
-private const val CopyCardAutoDismissMs = 12_000L
+private const val CopyCardAfterCopyMs = 900L
+private const val CopyCardAutoDismissMs = 5_000L
 
 /** 内嵌面板选项区的固定最大高度；超出后由 LazyColumn 内部滚动。 */
 private val InlineChoiceListMaxHeight = 220.dp
@@ -517,9 +517,15 @@ internal fun AgentInlineCopyCard(
     val clipboard = LocalClipboardManager.current
 
     // 进场即计时：点复制后切到「已复制」短暂停留，否则超时自动收起。
+    // 用 key(copied) 保证切换时旧计时被彻底取消，不会两个 onDismiss 撞在一起。
     LaunchedEffect(copied) {
-        delay(if (copied) CopyCardAfterCopyMs else CopyCardAutoDismissMs)
-        onDismiss()
+        if (copied) {
+            delay(CopyCardAfterCopyMs)
+            onDismiss()
+        } else {
+            delay(CopyCardAutoDismissMs)
+            onDismiss()
+        }
     }
 
     Column(

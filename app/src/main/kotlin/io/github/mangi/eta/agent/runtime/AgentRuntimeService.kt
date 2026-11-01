@@ -54,8 +54,6 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
-import io.github.mangi.eta.agent.overlay.AgentCopyCard
-import io.github.mangi.eta.agent.overlay.InteractionCardExitMs
 import io.github.mangi.eta.agent.overlay.AgentResultCard
 import io.github.mangi.eta.agent.overlay.AgentOverlayPhase
 import io.github.mangi.eta.agent.overlay.AgentOverlayState
@@ -127,10 +125,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     @Volatile private var choiceSession: ChoiceSession? = null
     /** 复制卡片是与运行并行的轻量提示，只保留最新一张。 */
-    private var copyView: ComposeView? = null
-    private var copyWindowManager: WindowManager? = null
-    private val copyCardVisible = mutableStateOf(false)
-    private var copyTeardownTask: Runnable? = null
 
     /** 窗口只投影当前手机控制者；各运行的状态保留在自己的记录中。 */
     private val state = mutableStateOf(AgentOverlayState.Initial)
@@ -244,12 +238,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         choiceSession?.finish(AgentChoiceResult.Unavailable)
         // 常亮探针必须兜底摘除，否则异常退出时屏幕会一直亮着。
         removeKeepScreenOnProbe()
-        cancelCardTeardown(copyTeardownTask)
-        copyTeardownTask = null
-        copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
-        copyView = null
         choiceSession = null
-        copyWindowManager = null
         VirtualDisplayController.release(this)
         unregisterResultCardBack()
         resultCardView?.let { view -> runCatching { windowManager?.removeView(view) } }
@@ -1626,55 +1615,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
 
-    private fun showCopyOverlay(wm: WindowManager, title: String, content: String): Boolean {
-        // 上一张还在收起动画里：先把它落定，避免两张卡片同时占位。
-        cancelCardTeardown(copyTeardownTask)
-        copyTeardownTask = null
-        copyView?.let { view -> runCatching { copyWindowManager?.removeView(view) } }
-        copyView = null
-        copyCardVisible.value = false
-        val card = createOverlayComposeView {
-            AgentCopyCard(
-                title = title,
-                content = content,
-                visible = copyCardVisible.value,
-                onDismiss = { removeCopyCard() },
-            )
-        }
-        val lp = interactionCardLayoutParams().apply {
-            height = WindowManager.LayoutParams.WRAP_CONTENT
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        }
-        val added = runCatching { wm.addView(card, lp) }
-        if (added.isFailure) {
-            AndroidAgentLogger.warnThrottled("runtime_copy_card_add_view_failed") {
-                "Agent runtime copy card addView failed: type=${added.exceptionOrNull()?.safeLogType()}"
-            }
-            return false
-        }
-        copyView = card
-        copyWindowManager = wm
-        card.post { if (copyView === card) copyCardVisible.value = true }
-        return true
-    }
-
-    /** 收起复制卡片：先播动画，动画走完再摘窗。 */
-    private fun removeCopyCard() {
-        val view = copyView ?: return
-        if (copyTeardownTask != null) return
-        copyCardVisible.value = false
-        val task = Runnable {
-            copyTeardownTask = null
-            if (copyView === view) {
-                runCatching { copyWindowManager?.removeView(view) }
-                copyView = null
-                copyWindowManager = null
-            }
-        }
-        copyTeardownTask = task
-        mainHandler.postDelayed(task, InteractionCardExitMs)
-    }
-
     /**
      * 收起选择卡片。
      *
@@ -1690,29 +1630,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         val settledResult = session.pending ?: result
         session.finish(settledResult)
     }
-
-    private fun cancelCardTeardown(task: Runnable?) {
-        if (task != null) mainHandler.removeCallbacks(task)
-    }
-
-
-    /** 与结果卡片同宽同底，但不吃掉半屏：窗口高度交给内容自己决定。 */
-    private fun interactionCardLayoutParams(): WindowManager.LayoutParams =
-        WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            overlayType(),
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = 0
-            windowAnimations = 0
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-        }
 
     /**
      * 一次等待中的选择。
@@ -1821,7 +1738,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         mainHandler.removeCallbacks(restoreCapsule)
         // 任务收尾时不能把还在等用户点选的卡片留在屏幕上，否则那个窗口再也没人关。
         if (choiceSession != null) dismantleChoiceCard(AgentChoiceResult.Cancelled)
-        removeCopyCard()
         capsuleYielded.value = false
         capsuleView?.keepScreenOn = false
         unregisterResultCardBack()

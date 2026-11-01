@@ -108,6 +108,8 @@ internal fun AgentHomeScreen(
                     onChoiceDismiss = {
                         onAction(AgentHomeAction.ResolveChoice(AgentChoiceResult.Cancelled))
                     },
+                    pendingCopy = state.pendingCopy,
+                    onCopyDismiss = { onAction(AgentHomeAction.DismissCopyCard) },
                     isDrawerOpen = isDrawerOpen,
                     modifier = modifier,
                 )

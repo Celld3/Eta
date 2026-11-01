@@ -406,7 +406,7 @@ private const val CopyCardAfterCopyMs = 1_400L
 private const val CopyCardAutoDismissMs = 12_000L
 
 /** 内嵌面板选项区的固定最大高度；超出后由 LazyColumn 内部滚动。 */
-private val InlineChoiceListMaxHeight = 240.dp
+private val InlineChoiceListMaxHeight = 220.dp
 
 /**
  * 对话输入框上方内嵌的选项面板。
@@ -560,7 +560,7 @@ internal fun AgentInlineChoicePanel(
 
                 // 自定义输入：胶囊输入框 + 圆形发送键，与聊天输入条同一套语汇。
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     BasicTextField(

@@ -58,6 +58,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -318,11 +320,18 @@ internal fun AgentInlineChoicePanel(
     var chosenIndex by remember { mutableIntStateOf(-1) }
     var collapsed by remember { mutableStateOf(false) }
     val customField = rememberTextFieldState()
+    val hapticFeedback = LocalHapticFeedback.current
+
+    // 面板进场时给一次轻触震动，提示有选择在等。
+    LaunchedEffect(Unit) {
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
 
     fun choose(index: Int) {
         if (settled) return
         settled = true
         chosenIndex = index
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
         onSelect(index)
     }
 

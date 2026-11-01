@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -94,6 +95,12 @@ internal data class AgentChoiceRequest(
         const val MaxTimeoutMs = 600_000L
     }
 }
+
+/** 复制卡片的请求：标题 + 待复制正文。与选项卡片同构，内嵌在对话界面。 */
+internal data class CopyCardRequest(
+    val title: String,
+    val content: String,
+)
 
 /** 选择卡片的终态；不可用时调用方退化为文字提问。 */
 sealed interface AgentChoiceResult {
@@ -478,6 +485,111 @@ internal fun AgentInlineChoicePanel(
                 }
 
             }
+        }
+    }
+}
+
+
+/**
+ * 对话输入框上方内嵌的复制卡片。
+ *
+ * 与浮窗版 [AgentCopyCard] 语义一致：不阻塞运行，用户点不点都继续；
+ * 点「复制」写入剪贴板并短暂显示「已复制」再收起，或超时自动收起。
+ * 复用外层的展开/收缩动画，自身只做静态渲染。
+ */
+@Composable
+internal fun AgentInlineCopyCard(
+    request: CopyCardRequest,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var copied by remember { mutableStateOf(false) }
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+
+    // 进场即计时：点复制后切到「已复制」短暂停留，否则超时自动收起。
+    LaunchedEffect(copied) {
+        delay(if (copied) CopyCardAfterCopyMs else CopyCardAutoDismissMs)
+        onDismiss()
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(MiuixTheme.colorScheme.surface)
+            .border(
+                0.5.dp,
+                MiuixTheme.colorScheme.outline.copy(alpha = 0.4f),
+                RoundedCornerShape(22.dp),
+            ),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = MiuixTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = request.title.ifBlank { stringResource(R.string.overlay_copy_title) },
+                color = MiuixTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = onDismiss,
+                minWidth = 34.dp,
+                minHeight = 34.dp,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(19.dp),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                )
+            }
+        }
+        Text(
+            text = request.content,
+            style = MiuixTheme.textStyles.footnote2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            maxLines = 3,
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            TextButton(
+                text = stringResource(if (copied) R.string.copy_copied else R.string.overlay_copy_action),
+                onClick = {
+                    clipboard.setText(AnnotatedString(request.content))
+                    copied = true
+                },
+                modifier = Modifier.weight(1f),
+                minHeight = 40.dp,
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
+            TextButton(
+                text = stringResource(R.string.overlay_copy_close),
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+                minHeight = 40.dp,
+            )
         }
     }
 }

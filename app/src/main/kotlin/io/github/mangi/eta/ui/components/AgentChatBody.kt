@@ -416,6 +416,10 @@ private fun AgentChatScaffold(
                 onAttachFilePath = onAttachFilePath,
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
+                pendingChoice = pendingChoice,
+                onChoiceSelect = onChoiceSelect,
+                onChoiceCustomInput = onChoiceCustomInput,
+                onChoiceDismiss = onChoiceDismiss,
             )
         },
     ) { innerPadding ->
@@ -1035,6 +1039,10 @@ private fun AgentChatBottomBar(
     onAttachFilePath: (String) -> Unit,
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
+    pendingChoice: AgentChoiceRequest? = null,
+    onChoiceSelect: (Int) -> Unit = {},
+    onChoiceCustomInput: (String) -> Unit = {},
+    onChoiceDismiss: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -1127,6 +1135,10 @@ private fun AgentChatBottomBar(
                 onAttachFilePath = onAttachFilePath,
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
+                pendingChoice = pendingChoice,
+                onChoiceSelect = onChoiceSelect,
+                onChoiceCustomInput = onChoiceCustomInput,
+                onChoiceDismiss = onChoiceDismiss,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

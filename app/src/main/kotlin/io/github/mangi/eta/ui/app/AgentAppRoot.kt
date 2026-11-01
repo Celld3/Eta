@@ -379,6 +379,8 @@ fun AgentAppRoot(
                     AgentHomeScreen(
                         state = agentState.homeState,
                         modelPickerState = agentState.modelPickerState,
+                        pendingChoice = agentState.pendingChoice,
+                        pendingCopy = agentState.pendingCopy,
                         conversationKey = agentState.conversationPaneState.selectedConversationId,
                         onAction = { action ->
                             when (action) {

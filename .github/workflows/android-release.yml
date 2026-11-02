@@ -187,13 +187,13 @@ jobs:
           short_sha="${GITHUB_SHA::7}"
           notes="$(printf '%s\n%s\n%s' \
             "由 main 分支自动构建：提交 ${short_sha}，Lint 与单元测试全部通过。" \
-            "包名 io.github.celld3.eta，可与原版 Eta 共存。" \
-            "首次安装需重新授权 Root、无障碍与悬浮窗。")"
+            "本仓库为 Celld3 的构建版，包含上游 Eta 的完整能力，并额外提供内嵌的选项卡片与复制卡片：二者直接渲染在聊天输入框上方，不再依赖系统级浮窗权限，也不再打断其他应用。" \
+            "包名 io.github.celld3.eta，可与原版 Eta 共存；首次安装需重新授权 Root、无障碍与悬浮窗。")"
           gh release delete latest-build --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           gh release create latest-build "$apk" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "$version" \
+            --title "Celld3 构建 $version" \
             --notes "$notes" \
             --latest
 

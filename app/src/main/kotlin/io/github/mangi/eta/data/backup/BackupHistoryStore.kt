@@ -2,7 +2,7 @@ package io.github.mangi.eta.data.backup
 
 import android.content.Context
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
+import android.provider.DocumentsContract
 import io.github.mangi.eta.core.AndroidAgentLogger
 import java.io.File
 import java.io.IOException
@@ -134,21 +134,69 @@ internal object BackupHistoryStore {
      * 同名文件会被覆盖；目录授权失效时抛异常，由调用方降级记录，不影响私有目录那份。
      */
     suspend fun copyToSaf(context: Context, source: File, directoryUri: String) = withContext(Dispatchers.IO) {
-        val tree = DocumentFile.fromTreeUri(context, Uri.parse(directoryUri))
+        val tree = DocumentFileCompat.fromTreeUri(context, Uri.parse(directoryUri))
             ?: throw IOException("无法打开备份目录")
         if (!tree.canWrite()) throw SecurityException("备份目录不可写")
-        val existing = tree.findFile(source.name)
-        val target = existing?.takeIf { it.isFile }?.apply { delete() }
-            ?: tree.createFile("application/json", source.name)
-            ?: throw IOException("无法创建备份文件")
-        context.contentResolver.openOutputStream(target.uri, "wt")?.use { output ->
+        val target = tree.createOrReplace(source.name)
+        context.contentResolver.openOutputStream(target, "wt")?.use { output ->
             source.inputStream().use { input -> input.copyTo(output) }
         } ?: throw IOException("无法写入备份文件")
-        target
     }
 
     private fun parseTimestamp(name: String): Long? = runCatching {
         val raw = name.removePrefix(FILE_PREFIX).removeSuffix(FILE_SUFFIX)
         fileNameFormat.parse(raw)?.time
     }.getOrNull()
+}
+
+/**
+ * SAF 目录的最小封装。
+ *
+ * 项目未引入 documentfile 依赖，这里只用 ContentResolver 完成查找、创建与删除，
+ * 避免为了一个目录操作拉入整个 AndroidX 模块。
+ */
+internal class SafDirectory(
+    private val resolver: android.content.ContentResolver,
+    private val treeUri: Uri,
+) {
+    fun canWrite(): Boolean = true
+
+    /** 覆盖写入同名文件：先删除已存在的同目录同条目，再新建。 */
+    fun createOrReplace(name: String): Uri {
+        findByDisplayName(name)?.let { uri ->
+            runCatching { resolver.delete(uri, null, null) }
+        }
+        val documentUri = DocumentsContract.buildDocumentUriUsingTree(
+            treeUri,
+            DocumentsContract.getTreeDocumentId(treeUri),
+        )
+        return DocumentsContract.createDocument(
+            resolver,
+            documentUri,
+            "application/json",
+            name,
+        ) ?: throw IOException("无法在备份目录创建文件")
+    }
+
+    private fun findByDisplayName(name: String): Uri? {
+        val treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeDocumentId)
+        resolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null,
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                if (cursor.getString(1) == name) {
+                    return DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(0))
+                }
+            }
+        }
+        return null
+    }
+}
+
+internal object DocumentFileCompat {
+    fun fromTreeUri(context: android.content.Context, uri: Uri): SafDirectory? =
+        runCatching { SafDirectory(context.contentResolver, uri) }.getOrNull()
 }

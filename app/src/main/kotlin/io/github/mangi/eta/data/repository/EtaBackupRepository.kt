@@ -48,7 +48,8 @@ internal data class EtaBackupDocument(
     companion object {
         const val FORMAT = "eta-backup"
         // 旧版会把未知原生 Provider 当作 OpenAI-compatible，必须通过备份版本阻止错误恢复。
-        const val SCHEMA_VERSION = 4
+        // v5 新增 skills 记录数组；v4 及更早的包没有该字段，恢复时跳过技能部分。
+        const val SCHEMA_VERSION = 5
     }
 }
 
@@ -65,6 +66,7 @@ internal data class EtaBackupSummary(
     val messageCount: Int,
     val memoryBytes: Int,
     val characterCount: Int = 0,
+    val skillCount: Int = 0,
 )
 
 internal class EtaBackupException(message: String, cause: Throwable? = null) :
@@ -127,8 +129,14 @@ internal object EtaBackupRepository {
                     phase = "export_roleplay"
                     val roleplay = CharacterBackupTransfer.snapshot(appContext, boundAvatars)
                     writer.value("roleplay", CharacterBackupData.serializer().nullable, roleplay)
+                    phase = "export_skills"
+                    writer.beginArray(EtaBackupJsonStreams.SKILLS)
+                    val skillCount = SkillBackupTransfer.exportSkills(appContext) { record ->
+                        writer.record(SkillBackupRecord.serializer(), record)
+                    }
+                    writer.endArray()
                     EtaBackupSummary(providers.size, providers.sumOf { it.models.size }, conversationCount,
-                        messageCount, memory.toByteArray(Charsets.UTF_8).size, roleplay.characters.size)
+                        messageCount, memory.toByteArray(Charsets.UTF_8).size, roleplay.characters.size, skillCount)
                 }
             }
         } catch (failure: Throwable) {
@@ -248,8 +256,34 @@ internal object EtaBackupRepository {
                     } catch (failure: Exception) {
                         throw IllegalStateException("数据已导入，但默认模型设置未完全恢复，请重新选择服务商和模型。", failure)
                     }
+                    // 技能恢复是合并式的：只覆盖同名技能，不删除本地独有技能。
+                    // v4 及更早的包没有 skills 数组，staged.skills 自然为空，跳过即可。
+                    phase = "restore_skills"
+                    var skillCount = 0
+                    val skillFailures = mutableListOf<String>()
+                    runCatching {
+                        staged.skills { record ->
+                            cancellation.ensureActive()
+                            if (SkillBackupTransfer.restoreSkill(appContext, record)) {
+                                skillCount++
+                            } else if (record.skippedReason == null) {
+                                skillFailures += record.id
+                            }
+                        }
+                        if (skillCount > 0) SkillBackupTransfer.refreshIndex(appContext)
+                    }.onFailure { failure ->
+                        if (failure is CancellationException) throw failure
+                        AndroidAgentLogger.warn(
+                            "Agent skill restore incomplete: type=${failure.safeLogType()}"
+                        )
+                    }
+                    if (skillFailures.isNotEmpty()) {
+                        throw IllegalStateException(
+                            "数据已导入，但 ${skillFailures.size} 个技能未能恢复：${skillFailures.take(3).joinToString()}",
+                        )
+                    }
                 }
-                summary
+                summary.copy(skillCount = skillCount)
             }
         } catch (failure: Throwable) {
             logFailure("import", phase, failure)

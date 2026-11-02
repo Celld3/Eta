@@ -10,6 +10,8 @@ import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.ProviderEntity
 import io.github.mangi.eta.data.db.ProviderModelEntity
 import io.github.mangi.eta.data.db.ProviderWithModelsSeed
+import io.github.mangi.eta.data.backup.SkillBackupRecord
+import io.github.mangi.eta.data.backup.SkillBackupTransfer
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.model.ProviderAuthModes
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -152,6 +154,7 @@ internal object EtaBackupRepository {
         forgetCredentials: (String) -> Unit = ProviderCredentialRepository::forget,
     ): EtaBackupSummary = withContext(Dispatchers.IO) {
         var phase = "stage_import"
+        var restoredSkills = 0
         try {
             val appContext = context.applicationContext
             EtaBackupJsonStreams.stage(appContext, input) { phase = it }.use { staged ->
@@ -259,18 +262,17 @@ internal object EtaBackupRepository {
                     // 技能恢复是合并式的：只覆盖同名技能，不删除本地独有技能。
                     // v4 及更早的包没有 skills 数组，staged.skills 自然为空，跳过即可。
                     phase = "restore_skills"
-                    var skillCount = 0
                     val skillFailures = mutableListOf<String>()
                     runCatching {
                         staged.skills { record ->
                             cancellation.ensureActive()
                             if (SkillBackupTransfer.restoreSkill(appContext, record)) {
-                                skillCount++
+                                restoredSkills++
                             } else if (record.skippedReason == null) {
                                 skillFailures += record.id
                             }
                         }
-                        if (skillCount > 0) SkillBackupTransfer.refreshIndex(appContext)
+                        if (restoredSkills > 0) SkillBackupTransfer.refreshIndex(appContext)
                     }.onFailure { failure ->
                         if (failure is CancellationException) throw failure
                         AndroidAgentLogger.warn(
@@ -283,7 +285,7 @@ internal object EtaBackupRepository {
                         )
                     }
                 }
-                summary.copy(skillCount = skillCount)
+                summary.copy(skillCount = restoredSkills)
             }
         } catch (failure: Throwable) {
             logFailure("import", phase, failure)

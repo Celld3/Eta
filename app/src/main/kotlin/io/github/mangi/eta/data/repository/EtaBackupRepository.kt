@@ -79,7 +79,6 @@ internal object EtaBackupRepository {
 
     suspend fun export(context: Context, output: OutputStream): EtaBackupSummary = withContext(Dispatchers.IO) {
         var phase = "prepare_export"
-        var lastSummary: EtaBackupSummary? = null
         try {
             val appContext = context.applicationContext
             CharacterRepository.initialize(appContext)
@@ -87,7 +86,7 @@ internal object EtaBackupRepository {
             val settings = SettingsDataStore.settings()
             val catalogRevision = SettingsDataStore.officialModelCatalogRevision()
             EtaBackupJsonStreams.export(appContext, output, onPhase = { phase = it }) { writer ->
-                database.withTransaction {
+                val base = database.withTransaction {
                     val dao = database.conversationDao()
                     val providers = database.providerDao().providers().map {
                         EtaBackupProvider(it.provider.withoutOAuthSecrets(), it.models)
@@ -132,11 +131,9 @@ internal object EtaBackupRepository {
                     phase = "export_roleplay"
                     val roleplay = CharacterBackupTransfer.snapshot(appContext, boundAvatars)
                     writer.value("roleplay", CharacterBackupData.serializer().nullable, roleplay)
-                    val summary = EtaBackupSummary(providers.size, providers.sumOf { it.models.size },
+                    EtaBackupSummary(providers.size, providers.sumOf { it.models.size },
                         conversationCount, messageCount, memory.toByteArray(Charsets.UTF_8).size,
                         roleplay.characters.size, 0)
-                    lastSummary = summary
-                    summary
                 }
                 // 技能导出必须发生在数据库事务之外：索引服务会获取跨进程文件锁，
                 // 与进行中的 Room 事务互相等待会造成备份挂死。
@@ -146,9 +143,9 @@ internal object EtaBackupRepository {
                     writer.record(SkillBackupRecord.serializer(), record)
                 }
                 writer.endArray()
-                lastSummary = lastSummary?.copy(skillCount = skillCount)
+                // 这个 lambda 必须返回摘要，不能以赋值结尾。
+                base.copy(skillCount = skillCount)
             }
-            return@withContext lastSummary ?: error("导出未产生摘要")
         } catch (failure: Throwable) {
             logFailure("export", phase, failure)
             throw failure

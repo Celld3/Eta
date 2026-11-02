@@ -232,7 +232,6 @@ internal fun DataBackupScreen(
             )
         }
     }
-}
 
     pendingHistory?.let { entry ->
         EtaWindowDialog(

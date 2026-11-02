@@ -26,6 +26,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.core.safeStackTrace
+import io.github.mangi.eta.data.backup.AutoBackupFile
 import io.github.mangi.eta.data.repository.EtaBackupSummary
 import io.github.mangi.eta.ui.components.EtaArrowPreference
 import io.github.mangi.eta.ui.components.EtaCard
@@ -59,6 +60,10 @@ internal fun DataBackupScreen(
     var busy by remember { mutableStateOf(false) }
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
+    val autoBackup = remember { AutoBackupStore(context, scope) }
+    var pendingHistory by remember { mutableStateOf<AutoBackupFile?>(null) }
+    var pendingDelete by remember { mutableStateOf<AutoBackupFile?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { autoBackup.refresh() }
 
     fun showFailure(throwable: Throwable) {
         if (throwable is CancellationException) throw throwable
@@ -158,6 +163,19 @@ internal fun DataBackupScreen(
                 )
             }
         }
+        item(key = "auto-backup") {
+            AutoBackupSection(
+                state = autoBackup.state,
+                onToggle = autoBackup::setEnabled,
+                onPickTime = { showTimePicker(context) { h, m -> autoBackup.setTime(h, m) } },
+                onPickRetention = { showRetentionPicker(context, autoBackup.state.settings.retentionCount) { autoBackup.setRetention(it) } },
+                onPickDirectory = autoBackup::setDirectory,
+                onRequestExactAlarm = {
+                    runCatching { context.startActivity(autoBackup.exactAlarmSettingsIntent()) }
+                },
+                onSelectHistory = { pendingHistory = it },
+            )
+        }
     }
 
     if (showImportDialog) {
@@ -216,6 +234,70 @@ internal fun DataBackupScreen(
     }
 }
 
+    pendingHistory?.let { entry ->
+        EtaWindowDialog(
+            show = true,
+            title = stringResource(R.string.data_backup_auto_restore_confirm_title),
+            summary = stringResource(R.string.data_backup_auto_restore_confirm_summary),
+            onDismissRequest = { if (!busy) pendingHistory = null },
+        ) {
+            MiuixDialogActions(
+                confirmText = if (busy) stringResource(R.string.data_backup_working)
+                else stringResource(R.string.data_backup_history_restore),
+                destructive = true,
+                cancelEnabled = !busy,
+                confirmEnabled = !busy,
+                onCancel = { pendingHistory = null },
+                onConfirm = {
+                    pendingHistory = null
+                    scope.launch {
+                        busy = true
+                        autoBackup.setBusy(true)
+                        try {
+                            val summary = entry.file.inputStream().use { onImport(it) }
+                            Toast.makeText(
+                                context,
+                                context.getString(
+                                    R.string.data_backup_imported_skills,
+                                    summary.conversationCount,
+                                    summary.providerCount,
+                                    summary.skillCount,
+                                ),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        } catch (throwable: Throwable) {
+                            showFailure(throwable)
+                        } finally {
+                            busy = false
+                            autoBackup.setBusy(false)
+                            autoBackup.refresh()
+                        }
+                    }
+                },
+            )
+        }
+    }
+
+    pendingDelete?.let { entry ->
+        EtaWindowDialog(
+            show = true,
+            title = stringResource(R.string.data_backup_auto_delete_confirm_title),
+            summary = stringResource(R.string.data_backup_auto_delete_confirm_summary),
+            onDismissRequest = { pendingDelete = null },
+        ) {
+            MiuixDialogActions(
+                confirmText = stringResource(R.string.data_backup_history_delete),
+                destructive = true,
+                onCancel = { pendingDelete = null },
+                onConfirm = {
+                    autoBackup.removeHistory(entry.name)
+                    pendingDelete = null
+                },
+            )
+        }
+    }
+}
+
 @Composable
 internal fun BackupIcon(icon: ImageVector, loading: Boolean) {
     Box(
@@ -238,3 +320,30 @@ internal fun BackupIcon(icon: ImageVector, loading: Boolean) {
 
 private fun defaultBackupFileName(): String =
     "Eta-backup-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.eta-backup.json"
+
+/** 用系统时间选择器与份数单选，避免引入额外 Compose 组件依赖。 */
+private fun showTimePicker(context: Context, onPicked: (Int, Int) -> Unit) {
+    val now = java.util.Calendar.getInstance()
+    android.app.TimePickerDialog(
+        context,
+        { _, hour, minute -> onPicked(hour, minute) },
+        now.get(java.util.Calendar.HOUR_OF_DAY),
+        now.get(java.util.Calendar.MINUTE),
+        true,
+    ).show()
+}
+
+private fun showRetentionPicker(context: Context, current: Int, onPicked: (Int) -> Unit) {
+    val options = listOf(3, 5, 7, 10, 14, 21, 30)
+    android.app.AlertDialog.Builder(context)
+        .setTitle(R.string.data_backup_auto_retention)
+        .setSingleChoiceItems(
+            options.map { context.getString(R.string.data_backup_auto_retention_option, it) }
+                .toTypedArray(),
+            options.indexOf(current).coerceAtLeast(0),
+        ) { dialog, which ->
+            onPicked(options[which])
+            dialog.dismiss()
+        }
+        .show()
+}

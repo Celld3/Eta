@@ -217,7 +217,7 @@ internal fun DataBackupScreen(
 }
 
 @Composable
-private fun BackupIcon(icon: ImageVector, loading: Boolean) {
+internal fun BackupIcon(icon: ImageVector, loading: Boolean) {
     Box(
         // 与 EtaPreferenceIcon 同宽，正文和分割线起点保持对齐。
         modifier = Modifier.size(EtaPreferenceDefaults.IconSize),

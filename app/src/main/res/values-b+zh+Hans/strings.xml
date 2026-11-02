@@ -1472,4 +1472,9 @@
     <string name="data_backup_imported_skills">已恢复 %1$d 个会话、%2$d 个服务商、%3$d 个技能</string>
     <string name="data_backup_auto_directory_clear">取消额外副本位置</string>
     <string name="data_backup_auto_saf_failure_title">复制到文件夹失败</string>
+    <string name="data_backup_auto_retention_option">保留 %1$d 份</string>
+    <string name="data_backup_auto_restore_confirm_title">恢复这份备份？</string>
+    <string name="data_backup_auto_restore_confirm_summary">会话、记忆与技能会被这份备份替换；备份里没有的技能会保留。</string>
+    <string name="data_backup_auto_delete_confirm_title">删除这份备份？</string>
+    <string name="data_backup_auto_delete_confirm_summary">只删除应用内的这个文件，删除后无法撤销。</string>
 </resources>

@@ -1401,4 +1401,6 @@
     <string name="data_backup_history_delete">刪除</string>
     <string name="data_backup_skills_exported">包含 %1$d 個技能</string>
     <string name="data_backup_imported_skills">已還原 %1$d 個會話、%2$d 個服務商、%3$d 個技能</string>
+    <string name="data_backup_auto_directory_clear">取消額外副本位置</string>
+    <string name="data_backup_auto_saf_failure_title">複製到資料夾失敗</string>
 </resources>

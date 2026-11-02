@@ -1403,4 +1403,9 @@
     <string name="data_backup_imported_skills">已還原 %1$d 個會話、%2$d 個服務商、%3$d 個技能</string>
     <string name="data_backup_auto_directory_clear">取消額外副本位置</string>
     <string name="data_backup_auto_saf_failure_title">複製到資料夾失敗</string>
+    <string name="data_backup_auto_retention_option">保留 %1$d 份</string>
+    <string name="data_backup_auto_restore_confirm_title">還原這份備份？</string>
+    <string name="data_backup_auto_restore_confirm_summary">會話、記憶與技能會被這份備份取代；備份裡沒有的技能會保留。</string>
+    <string name="data_backup_auto_delete_confirm_title">刪除這份備份？</string>
+    <string name="data_backup_auto_delete_confirm_summary">只刪除應用程式內的這個檔案，刪除後無法復原。</string>
 </resources>

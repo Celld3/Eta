@@ -148,7 +148,7 @@ internal object EtaBackupRepository {
                 writer.endArray()
                 lastSummary = lastSummary?.copy(skillCount = skillCount)
             }
-            checkNotNull(lastSummary) { "导出未产生摘要" }
+            return@withContext lastSummary ?: error("导出未产生摘要")
         } catch (failure: Throwable) {
             logFailure("export", phase, failure)
             throw failure

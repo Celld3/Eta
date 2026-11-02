@@ -79,6 +79,7 @@ internal object EtaBackupRepository {
 
     suspend fun export(context: Context, output: OutputStream): EtaBackupSummary = withContext(Dispatchers.IO) {
         var phase = "prepare_export"
+        var lastSummary: EtaBackupSummary? = null
         try {
             val appContext = context.applicationContext
             CharacterRepository.initialize(appContext)
@@ -131,16 +132,23 @@ internal object EtaBackupRepository {
                     phase = "export_roleplay"
                     val roleplay = CharacterBackupTransfer.snapshot(appContext, boundAvatars)
                     writer.value("roleplay", CharacterBackupData.serializer().nullable, roleplay)
-                    phase = "export_skills"
-                    writer.beginArray(EtaBackupJsonStreams.SKILLS)
-                    val skillCount = SkillBackupTransfer.exportSkills(appContext) { record ->
-                        writer.record(SkillBackupRecord.serializer(), record)
-                    }
-                    writer.endArray()
-                    EtaBackupSummary(providers.size, providers.sumOf { it.models.size }, conversationCount,
-                        messageCount, memory.toByteArray(Charsets.UTF_8).size, roleplay.characters.size, skillCount)
+                    val summary = EtaBackupSummary(providers.size, providers.sumOf { it.models.size },
+                        conversationCount, messageCount, memory.toByteArray(Charsets.UTF_8).size,
+                        roleplay.characters.size, 0)
+                    lastSummary = summary
+                    summary
                 }
+                // 技能导出必须发生在数据库事务之外：索引服务会获取跨进程文件锁，
+                // 与进行中的 Room 事务互相等待会造成备份挂死。
+                phase = "export_skills"
+                writer.beginArray(EtaBackupJsonStreams.SKILLS)
+                val skillCount = SkillBackupTransfer.exportSkills(appContext) { record ->
+                    writer.record(SkillBackupRecord.serializer(), record)
+                }
+                writer.endArray()
+                lastSummary = lastSummary?.copy(skillCount = skillCount)
             }
+            checkNotNull(lastSummary) { "导出未产生摘要" }
         } catch (failure: Throwable) {
             logFailure("export", phase, failure)
             throw failure
@@ -263,16 +271,21 @@ internal object EtaBackupRepository {
                     // v4 及更早的包没有 skills 数组，staged.skills 自然为空，跳过即可。
                     phase = "restore_skills"
                     val skillFailures = mutableListOf<String>()
+                    val restoredRecords = mutableListOf<SkillBackupRecord>()
                     runCatching {
                         staged.skills { record ->
                             cancellation.ensureActive()
                             if (SkillBackupTransfer.restoreSkill(appContext, record)) {
                                 restoredSkills++
+                                restoredRecords += record
                             } else if (record.skippedReason == null) {
                                 skillFailures += record.id
                             }
                         }
-                        if (restoredSkills > 0) SkillBackupTransfer.refreshIndex(appContext)
+                        // registry 写入放在这里而不是 Room 事务内，避免与技能文件锁交叉等待。
+                        if (restoredRecords.isNotEmpty()) {
+                            SkillBackupTransfer.restoreRegistry(appContext, restoredRecords)
+                        }
                     }.onFailure { failure ->
                         if (failure is CancellationException) throw failure
                         AndroidAgentLogger.warn(

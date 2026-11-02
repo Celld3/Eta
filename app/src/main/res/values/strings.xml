@@ -1489,4 +1489,6 @@
     <string name="data_backup_history_delete">Delete</string>
     <string name="data_backup_skills_exported">Included %1$d skills</string>
     <string name="data_backup_imported_skills">Imported %1$d conversations, %2$d providers, %3$d skills</string>
+    <string name="data_backup_auto_directory_clear">Remove the extra copy location</string>
+    <string name="data_backup_auto_saf_failure_title">Copy to folder failed</string>
 </resources>

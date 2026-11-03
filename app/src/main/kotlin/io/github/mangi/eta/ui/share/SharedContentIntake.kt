@@ -12,7 +12,7 @@ import android.net.Uri
  * 只承载用户主动选中的文本与图片：不读剪贴板，也不抓来源应用的窗口内容。
  * 应用名只用来告诉模型这段话出自哪里，取不到就留空，不做推断。
  */
-internal data class SharedContentIntake(
+data class SharedContentIntake(
     val text: String = "",
     val imageUris: List<String> = emptyList(),
     val sourceAppLabel: String? = null,

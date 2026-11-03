@@ -177,6 +177,8 @@ internal class AgentRuntimeRunExecutor(
             val executor = AgentLocalTools(
                 context = appContext,
                 logger = AndroidAgentLogger,
+                /* 卡片按会话归属；没有会话归属的运行由 run:<runId> 兜底，与浏览器会话同一套键。 */
+                conversationKey = browserKey,
                 browserRunId = request.runId,
                 browserSession = BrowserSessionRegistry.get(browserKey),
                 guiControl = guiRun,

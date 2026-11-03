@@ -123,8 +123,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var resultCardParams: WindowManager.LayoutParams? = null
     private var resultCardBack: Pair<OnBackInvokedDispatcher, OnBackInvokedCallback>? = null
 
-    @Volatile private var choiceSession: ChoiceSession? = null
-    /** 复制卡片是与运行并行的轻量提示，只保留最新一张。 */
+    /**
+     * 每个会话最多一张选项卡片，按会话身份索引。
+     *
+     * 只允许一张时会话 A 挂着卡片，会话 B 想提问就只能拿到 Unavailable 退化成文字；
+     * 改成每会话一张后，两个会话各自阻塞在自己的卡片上，互不影响。
+     */
+    @Volatile private var choiceSessions: Map<String, ChoiceSession> = emptyMap()
+    /** 复制卡片是与运行并行的轻量提示，每个会话只保留最新一张。 */
 
     /** 窗口只投影当前手机控制者；各运行的状态保留在自己的记录中。 */
     private val state = mutableStateOf(AgentOverlayState.Initial)
@@ -235,10 +241,15 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         mainHandler.removeCallbacksAndMessages(null)
         AgentOverlayClearance.detach(clearanceHost)
         AgentInteraction.detach(this)
-        choiceSession?.finish(AgentChoiceResult.Unavailable)
+        /* 服务没了，界面不能再挂着任何一张等作答的卡片：选项卡片先摘键再把等待中的
+           调用方以 Unavailable 放行，否则工具线程会一直等到超时；复制卡片不阻塞，
+           没有会话能在服务死后重新发布它，一并清空。 */
+        pendingChoiceState.value = pendingChoiceState.value - choiceSessions.keys.toSet()
+        pendingCopyState.value = emptyMap()
+        choiceSessions.values.forEach { it.finish(AgentChoiceResult.Unavailable) }
         // 常亮探针必须兜底摘除，否则异常退出时屏幕会一直亮着。
         removeKeepScreenOnProbe()
-        choiceSession = null
+        choiceSessions = emptyMap()
         VirtualDisplayController.release(this)
         unregisterResultCardBack()
         resultCardView?.let { view -> runCatching { windowManager?.removeView(view) } }
@@ -1550,24 +1561,30 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     override fun requestChoice(request: AgentChoiceRequest, isCancelled: () -> Boolean): AgentChoiceResult {
         if (destroyed) return AgentChoiceResult.Unavailable
-        val wm = overlayWindowManagerOrNull() ?: return AgentChoiceResult.Unavailable
-        if (choiceSession != null) return AgentChoiceResult.Unavailable
-        val session = ChoiceSession(request)
+        /* 没有会话归属的运行（终端页、外部入口）在聊天界面里没有可渲染的位置，
+           挂上去只会得到一张用户点不到、只能等超时的卡片；直接退化成文字提问。 */
+        if (AgentConversationIdentity.isRunFallbackKey(request.conversationKey)) {
+            return AgentChoiceResult.Unavailable
+        }
+        if (overlayWindowManagerOrNull() == null) return AgentChoiceResult.Unavailable
+        val key = request.conversationKey
+        if (choiceSessions.containsKey(key)) return AgentChoiceResult.Unavailable
+        val session = ChoiceSession(request, key)
         val posted = CountDownLatch(1)
         mainHandler.post {
-            if (destroyed || choiceSession != null) {
+            if (destroyed || choiceSessions.containsKey(key)) {
                 posted.countDown()
                 return@post
             }
-            choiceSession = session
+            choiceSessions = choiceSessions + (key to session)
             // 不再创建浮窗，改为发布内嵌面板请求，UI 层订阅 pendingChoice 渲染。
-            pendingChoiceState.value = request
+            pendingChoiceState.value = pendingChoiceState.value + (key to request)
             session.shown = true
             session.startTimeout()
             posted.countDown()
         }
         if (!posted.await(ChoicePostTimeoutMs, TimeUnit.MILLISECONDS)) {
-            mainHandler.post { if (choiceSession === session) dismantleChoiceCard(AgentChoiceResult.Unavailable) }
+            mainHandler.post { dismantleChoiceCard(key, AgentChoiceResult.Unavailable) }
             return AgentChoiceResult.Unavailable
         }
         if (!session.shown) return AgentChoiceResult.Unavailable
@@ -1577,32 +1594,55 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         ) + ChoiceAwaitSlackMs
         return try {
             val awaited = session.await(guardMs, isCancelled)
-            // 用户点选与主动取消都会先摘窗并把 choiceSession 清空，这里的条件自然不成立；
+            // 用户点选与主动取消都会先摘窗并把对应会话的 session 清空，这里的条件自然不成立；
             // 只有运行被停止而用户还没回答时，卡片才仍挂在屏幕上，需要补一次收回。
             val settled = awaited ?: AgentChoiceResult.TimedOut
-            mainHandler.post { if (choiceSession === session) dismantleChoiceCard(settled) }
+            mainHandler.post { dismantleChoiceCard(key, settled) }
             settled
         } catch (interrupted: InterruptedException) {
             Thread.currentThread().interrupt()
-            mainHandler.post { if (choiceSession === session) dismantleChoiceCard(AgentChoiceResult.Cancelled) }
+            mainHandler.post { dismantleChoiceCard(key, AgentChoiceResult.Cancelled) }
             AgentChoiceResult.Cancelled
         }
     }
 
-    override fun showCopyCard(title: String, content: String): Boolean {
+    override fun showCopyCard(title: String, content: String, conversationKey: String): Boolean {
         if (destroyed || content.isBlank()) return false
+        /* 同选项卡片：没有会话归属的运行没有可渲染的位置，直接让调用方退回 set_clipboard。 */
+        if (AgentConversationIdentity.isRunFallbackKey(conversationKey)) return false
         // 内嵌复制卡片：不再创建浮窗，改为发布请求，UI 层订阅 pendingCopy 渲染。
-        pendingCopyState.value = CopyCardRequest(title, content)
+        pendingCopyState.value = pendingCopyState.value + (
+            conversationKey to CopyCardRequest(title, content, conversationKey)
+        )
         return true
     }
 
     /** UI 层点选/自定义输入/取消后，把结论回传给阻塞中的调用方。 */
-    override fun resolveChoice(result: AgentChoiceResult) {
+    override fun resolveChoice(result: AgentChoiceResult, conversationKey: String) {
         mainHandler.post {
-            choiceSession?.pending = result
-            choiceSession?.let { dismantleChoiceCard(result) }
-            pendingChoiceState.value = null
+            choiceSessions[conversationKey]?.pending = result
+            dismantleChoiceCard(conversationKey, result)
         }
+    }
+
+    /** UI 层收起复制卡片后清掉该会话的请求；服务没起或该会话本来就没有卡片时无事可做。 */
+    override fun dismissCopyCard(conversationKey: String) {
+        mainHandler.post { pendingCopyState.value = pendingCopyState.value - conversationKey }
+    }
+
+    /**
+     * 切到别的会话时暂停该会话卡片的超时计时。
+     *
+     * 不暂停的话，用户在别的会话聊几分钟回来，卡片早已按超时自己走了，
+     * 模型也按推荐项继续推进，而用户完全不知道发生过什么。
+     */
+    fun pauseChoiceTimeout(conversationKey: String) {
+        mainHandler.post { choiceSessions[conversationKey]?.pauseTimeout() }
+    }
+
+    /** 切回该会话时继续倒数，剩余时长沿用暂停前的那一刻。 */
+    fun resumeChoiceTimeout(conversationKey: String) {
+        mainHandler.post { choiceSessions[conversationKey]?.resumeTimeout() }
     }
 
     /** 已就绪的窗口管理器；没有可用浮窗权限时返回 null，由调用方退化为文字交互。 */
@@ -1621,11 +1661,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
      * 结论先落地唤醒调用方，窗口随后播收起动画再摘除：模型不必等 190ms 的退场，
      * 而用户看到的仍是一段完整动画，不是卡片被直接抹掉。
      */
-    private fun dismantleChoiceCard(result: AgentChoiceResult) {
-        val session = choiceSession ?: return
-        choiceSession = null
-        // 内嵌面板没有浮窗需要摘除，清空请求状态让 UI 收起即可。
-        pendingChoiceState.value = null
+    private fun dismantleChoiceCard(conversationKey: String, result: AgentChoiceResult) {
+        val session = choiceSessions[conversationKey] ?: return
+        choiceSessions = choiceSessions - conversationKey
+        // 内嵌面板没有浮窗需要摘除，清空该会话的请求状态让 UI 收起即可。
+        pendingChoiceState.value = pendingChoiceState.value - conversationKey
         // 用户已经点过的选项优先于晚到的取消/超时。
         val settledResult = session.pending ?: result
         session.finish(settledResult)
@@ -1637,24 +1677,47 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
      * 超时由看门狗任务在主线程触发，与用户点选共用 [finish] 的原子交接：谁先到达谁生效，
      * 后到的完成不会覆盖结论，也不会把已经摘掉的窗口再摘一次。
      */
-    private inner class ChoiceSession(val request: AgentChoiceRequest) {
+    private inner class ChoiceSession(
+        val request: AgentChoiceRequest,
+        private val conversationKey: String,
+    ) {
         private val latch = CountDownLatch(1)
         private val settled = AtomicReference<AgentChoiceResult?>(null)
         @Volatile var shown = false
         /** 用户刚点下、窗口还没摘时的结论；摘窗时它优先于同时到达的取消与超时。 */
         @Volatile var pending: AgentChoiceResult? = null
         private var timeoutTask: Runnable? = null
+        /** 本轮看门狗还剩多少毫秒；暂停时记下来，恢复时按剩余时长重排。 */
+        private var remainingMs: Long = 0L
+
+        /* 暂停状态由主线程改、由调用线程读，统一用这把锁交接，避免读到半更新的一对值。 */
+        private val pauseLock = Any()
+        private var paused = false
+        private var pauseStartedAt = 0L
+        private var pausedTotalMs = 0L
 
         /**
          * 等待结论：正常返回结论；返回 null 表示 [guardMs] 内没人回答（按超时处理）；
          * 返回 [AgentChoiceResult.Cancelled] 表示运行方已经停止，卡片要立刻收回。
+         *
+         * 这一层自己的兜底同样要扣掉暂停时间：只停看门狗而这里照常倒数的话，
+         * 用户在别的会话待得久了回来，卡片照样被这里判成超时。
          */
         fun await(guardMs: Long, isCancelled: () -> Boolean): AgentChoiceResult? {
             val deadline = SystemClock.uptimeMillis() + guardMs
             while (true) {
                 // 运行被停止时立刻收回卡片；结论与用户主动取消一致，都是「没有拿到选择」。
                 if (isCancelled()) return AgentChoiceResult.Cancelled
-                val remaining = deadline - SystemClock.uptimeMillis()
+                if (isPaused()) {
+                    /* 暂停期间不计时，但仍按轮询间隔醒来，以便及时响应停止。
+                       这里不提前结算：剩余时长在恢复那一刻由看门狗重新排定。 */
+                    if (latch.await(CancelPollMs, TimeUnit.MILLISECONDS)) {
+                        return settled.get() ?: AgentChoiceResult.Cancelled
+                    }
+                    continue
+                }
+                // 兜底截止时间同样要把暂停过的时长还回去，否则切走久了回来照样被判超时。
+                val remaining = deadline + pausedMillisTotal() - SystemClock.uptimeMillis()
                 if (remaining <= 0) return null
                 if (latch.await(minOf(remaining, CancelPollMs), TimeUnit.MILLISECONDS)) {
                     return settled.get() ?: AgentChoiceResult.Cancelled
@@ -1662,12 +1725,66 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             }
         }
 
+        private fun isPaused(): Boolean = synchronized(pauseLock) { paused }
+
+        /** 累计暂停毫秒数；正在暂停中的那一段也计入。 */
+        private fun pausedMillisTotal(): Long = synchronized(pauseLock) {
+            if (paused) pausedTotalMs + (SystemClock.uptimeMillis() - pauseStartedAt).coerceAtLeast(0L)
+            else pausedTotalMs
+        }
+
         fun startTimeout() {
-            val task = Runnable { dismantleChoiceCard(AgentChoiceResult.TimedOut) }
-            timeoutTask = task
-            mainHandler.postDelayed(task, request.timeoutMs.coerceIn(
+            remainingMs = request.timeoutMs.coerceIn(
                 AgentChoiceRequest.MinTimeoutMs, AgentChoiceRequest.MaxTimeoutMs,
-            ))
+            )
+            scheduleTimeout(remainingMs)
+        }
+
+        /**
+         * 暂停看门狗。
+         *
+         * 卡片跟着会话走：切到别的会话就暂停，否则用户在别处待久了回来，卡片已经按超时自己走了。
+         * 剩余时长在暂停那一刻算好存下来，恢复时按它重排，不会因为暂停而多给时间。
+         */
+        fun pauseTimeout() {
+            synchronized(pauseLock) {
+                val task = timeoutTask ?: return
+                if (paused) return
+                paused = true
+                pauseStartedAt = SystemClock.uptimeMillis()
+                mainHandler.removeCallbacks(task)
+                timeoutTask = null
+                remainingMs = (remainingMs - elapsedSinceSchedule()).coerceAtLeast(0L)
+            }
+        }
+
+        /** 继续倒数；剩余为 0 时立刻按超时收卡片。 */
+        fun resumeTimeout() {
+            synchronized(pauseLock) {
+                if (!paused) return
+                pausedTotalMs += (SystemClock.uptimeMillis() - pauseStartedAt).coerceAtLeast(0L)
+                paused = false
+                pauseStartedAt = 0L
+                /* 暂停期间卡片可能已经被点选或取消结算，这时不必再排一个只会在稍后空转的看门狗。 */
+                if (settled.get() != null) return
+                if (remainingMs <= 0L) {
+                    dismantleChoiceCard(conversationKey, AgentChoiceResult.TimedOut)
+                    return
+                }
+                scheduleTimeout(remainingMs)
+            }
+        }
+
+        private var scheduledAt: Long = 0L
+
+        private fun elapsedSinceSchedule(): Long =
+            if (scheduledAt <= 0L) 0L else (SystemClock.uptimeMillis() - scheduledAt).coerceAtLeast(0L)
+
+        private fun scheduleTimeout(delayMs: Long) {
+            val task = Runnable { dismantleChoiceCard(conversationKey, AgentChoiceResult.TimedOut) }
+            timeoutTask = task
+            scheduledAt = SystemClock.uptimeMillis()
+            mainHandler.postDelayed(task, delayMs)
         }
 
         fun finish(result: AgentChoiceResult) {
@@ -1728,6 +1845,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         displayedRun = null
         removeOverlayWindows()
         if (runs.all().isEmpty() && !guiControl.state.value.userPaused) {
+            /* 服务要停了，谁也没法再回答这些卡片：统一收回，别把等待中的工具线程留到超时。 */
+            choiceSessions.keys.toList().forEach { key ->
+                dismantleChoiceCard(key, AgentChoiceResult.Cancelled)
+            }
             VirtualDisplayController.release(this)
             stopSelf()
         }
@@ -1736,8 +1857,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun removeOverlayWindows() {
         mainHandler.removeCallbacksAndMessages(hideToken)
         mainHandler.removeCallbacks(restoreCapsule)
-        // 任务收尾时不能把还在等用户点选的卡片留在屏幕上，否则那个窗口再也没人关。
-        if (choiceSession != null) dismantleChoiceCard(AgentChoiceResult.Cancelled)
+        /* 卡片按会话归属，不再跟着「前台展示哪个 run」走：切换展示不该连坐别的会话那张卡片。
+           服务真正要停时由 dismissAndStop / onDestroy 统一收回。 */
         capsuleYielded.value = false
         capsuleView?.keepScreenOn = false
         unregisterResultCardBack()
@@ -1783,12 +1904,27 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         val keepScreenOn = keepScreenOnState.asStateFlow()
 
         // 内嵌选项面板：工具线程发布请求，UI 层订阅渲染。
-        private val pendingChoiceState = MutableStateFlow<AgentChoiceRequest?>(null)
+        private val pendingChoiceState = MutableStateFlow<Map<String, AgentChoiceRequest>>(emptyMap())
+        /** 按会话归属的待作答卡片；UI 只取当前会话那一张。 */
         val pendingChoice = pendingChoiceState.asStateFlow()
 
         // 内嵌复制卡片：同选项面板，不再走系统浮窗。
-        private val pendingCopyState = MutableStateFlow<CopyCardRequest?>(null)
+        private val pendingCopyState = MutableStateFlow<Map<String, CopyCardRequest>>(emptyMap())
         val pendingCopy = pendingCopyState.asStateFlow()
+
+        /**
+         * 切走某个会话时暂停它那张卡片的超时计时。
+         *
+         * 服务可能没起（没有运行中的任务），此时没有卡片，也就无事可做。
+         */
+        internal fun pauseChoiceTimeoutFor(conversationKey: String) {
+            activeInstance?.pauseChoiceTimeout(conversationKey)
+        }
+
+        /** 切回某个会话时继续倒数，剩余时长沿用暂停前的那一刻。 */
+        internal fun resumeChoiceTimeoutFor(conversationKey: String) {
+            activeInstance?.resumeChoiceTimeout(conversationKey)
+        }
 
         internal fun onEtaUiVisibilityChanged() {
             val instance = activeInstance ?: return

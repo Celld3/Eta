@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui
 import android.app.UiModeManager
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -23,12 +24,17 @@ import io.github.mangi.eta.ui.app.AgentAppRoot
 import io.github.mangi.eta.ui.app.AgentAppTheme
 import io.github.mangi.eta.ui.app.PredictiveBackController
 import io.github.mangi.eta.ui.app.installStartupSplash
+import io.github.mangi.eta.ui.share.SharedContentIntake
+import io.github.mangi.eta.ui.share.SharedContentIntakeParser
+import io.github.mangi.eta.ui.share.SharedSourceAppResolver
+import io.github.mangi.eta.ui.share.initialSharedIntake
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var launchRequests by mutableStateOf(MainActivityLaunchRequests())
+    private var sharedIntake by mutableStateOf<SharedContentIntake?>(null)
     private var appliedPredictiveBackEnabled = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,6 +44,12 @@ class MainActivity : ComponentActivity() {
         installStartupSplash { contentReady }
         enableEdgeToEdge()
         launchRequests = MainActivityLaunchRequests.restore(savedInstanceState, intent)
+        /* 重建时只还原已保存的预填草稿，不重新解析启动 Intent，避免重复预填。 */
+        sharedIntake = initialSharedIntake(
+            savedInstanceState = savedInstanceState,
+            parseFromIntent = { parseSharedContent(intent) },
+            restoreFromState = ::restoreSharedIntake,
+        )
         lifecycleScope.launch {
             val initialAppearance = AppearanceSettingsRepository.settings()
             appliedPredictiveBackEnabled = initialAppearance.predictiveBackEnabled
@@ -93,6 +105,12 @@ class MainActivity : ComponentActivity() {
                                 EtaAssistantOverlayService.notifyHandoffReady(this@MainActivity)
                             }
                         },
+                        sharedIntake = sharedIntake,
+                        onSharedIntakeConsumed = {
+                            sharedIntake = null
+                            /* 分享内容已被输入框接收；清掉 Action 防止重建后重复预填。 */
+                            intent?.action = null
+                        },
                     )
                 }
             }
@@ -120,7 +138,40 @@ class MainActivity : ComponentActivity() {
         AndroidAgentLogger.info("Agent UI new intent: task=$taskId launcher=$fromLauncher")
         setIntent(intent)
         launchRequests = launchRequests.accept(intent)
+        acceptSharedContent(intent)
     }
+
+    /**
+     * 分享与划词进来的内容只做预填，不自动发送：用户补完指令再交出去。
+     * 解析不出可读内容时返回 null，界面保持原样，不弹空对话框。
+     */
+    private fun acceptSharedContent(intent: Intent?) {
+        parseSharedContent(intent)?.let { sharedIntake = it }
+    }
+
+    /** 解析启动 Intent 里的分享内容；解析不出可读内容时返回 null。 */
+    private fun parseSharedContent(intent: Intent?): SharedContentIntake? =
+        SharedContentIntakeParser.parse(
+            intent = intent,
+            sourceAppLabel = SharedSourceAppResolver.resolve(
+                context = applicationContext,
+                referrerPackage = intent?.resolveSharedReferrer(),
+            ),
+            nonce = SystemClock.elapsedRealtimeNanos(),
+        )
+
+    private fun restoreSharedIntake(savedInstanceState: Bundle): SharedContentIntake? {
+        val saved = savedInstanceState.getBundle(STATE_SHARED_INTAKE) ?: return null
+        val text = saved.getString("text").orEmpty()
+        val images = saved.getStringArrayList("images").orEmpty()
+        val source = saved.getString("source")
+        val nonce = saved.getLong("nonce")
+        return SharedContentIntake(text = text, imageUris = images, sourceAppLabel = source, nonce = nonce)
+            .takeUnless { it.isEmpty }
+    }
+
+    private fun Intent.resolveSharedReferrer(): String? =
+        runCatching { referrer?.host }.getOrNull()
 
     override fun onDestroy() {
         startedInstances.remove(this)
@@ -133,6 +184,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         launchRequests.saveTo(outState)
+        sharedIntake?.let { intake ->
+            outState.putBundle(STATE_SHARED_INTAKE, Bundle().apply {
+                putString("text", intake.text)
+                putStringArrayList("images", ArrayList(intake.imageUris))
+                putString("source", intake.sourceAppLabel)
+                putLong("nonce", intake.nonce)
+            })
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -176,6 +235,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val STATE_SHARED_INTAKE = "eta_shared_intake"
         private val startedInstances = Collections.newSetFromMap(IdentityHashMap<MainActivity, Boolean>())
 
         @Volatile

@@ -27,6 +27,7 @@ import io.github.mangi.eta.ui.app.installStartupSplash
 import io.github.mangi.eta.ui.share.SharedContentIntake
 import io.github.mangi.eta.ui.share.SharedContentIntakeParser
 import io.github.mangi.eta.ui.share.SharedSourceAppResolver
+import io.github.mangi.eta.ui.share.initialSharedIntake
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlinx.coroutines.launch

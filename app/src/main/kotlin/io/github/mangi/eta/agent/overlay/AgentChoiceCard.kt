@@ -80,6 +80,14 @@ internal data class AgentChoiceRequest(
     val subtitle: String = "",
     val options: List<AgentChoiceOption> = emptyList(),
     val timeoutMs: Long = DefaultTimeoutMs,
+    /**
+     * 发起这次选择的会话身份，取值与 [io.github.mangi.eta.agent.runtime.AgentConversationIdentity] 一致。
+     *
+     * 卡片只在归属会话里显示。没有会话归属的运行（终端页、外部入口）取 `run:<runId>`，
+     * 这类键在聊天界面里没有可渲染的位置，运行时会让 [AgentChoiceResult.Unavailable] 退化，
+     * 由模型改用文字提问，而不是挂一张用户点不到、只能等超时的卡片。
+     */
+    val conversationKey: String = "",
 ) {
     companion object {
         const val DefaultTimeoutMs = 120_000L
@@ -92,6 +100,8 @@ internal data class AgentChoiceRequest(
 internal data class CopyCardRequest(
     val title: String,
     val content: String,
+    /** 归属会话身份；与 [AgentChoiceRequest.conversationKey] 同一套取值。 */
+    val conversationKey: String = "",
 )
 
 /** 选择卡片的终态；不可用时调用方退化为文字提问。 */

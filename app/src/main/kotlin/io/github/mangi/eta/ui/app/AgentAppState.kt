@@ -140,7 +140,8 @@ internal class AgentAppState(
         private set
     val isLoadingEarlierMessages: Boolean get() = historyLoadState == ConversationHistoryLoadState.Loading
 
-    private var selectedConversationId: String? = initialConversations.selectedConversationId
+    /* 用快照状态承载当前会话：卡片按会话取用，界面必须能感知会话切换才会重新取值。 */
+    private var selectedConversationId by mutableStateOf<String?>(initialConversations.selectedConversationId)
     private var conversationsById: Map<String, AgentChatHomeUiState> = initialConversations.conversationsById
     private var conversationTitles: Map<String, String> = initialConversations.titles
     private var conversationUpdatedAt: Map<String, Long> = initialConversations.updatedAt
@@ -159,11 +160,17 @@ internal class AgentAppState(
      * 会话状态在流式输出期间每帧都会被整体替换，若把交互请求塞进 [homeState]，
      * 下一帧就会被更早的状态快照覆盖掉；这里单独放一份，只有交互本身能改它。
      */
-    var pendingChoice by mutableStateOf<AgentChoiceRequest?>(null)
-        private set
+    /** 按会话归属的待作答卡片；界面只取当前会话那一张。 */
+    private var pendingChoiceByConversation by mutableStateOf<Map<String, AgentChoiceRequest>>(emptyMap())
 
-    var pendingCopy by mutableStateOf<CopyCardRequest?>(null)
-        private set
+    /** 当前会话的待作答卡片；切到别的会话即为 null，卡片不会跨会话显示。 */
+    val pendingChoice: AgentChoiceRequest?
+        get() = selectedConversationId?.let(pendingChoiceByConversation::get)
+
+    private var pendingCopyByConversation by mutableStateOf<Map<String, CopyCardRequest>>(emptyMap())
+
+    val pendingCopy: CopyCardRequest?
+        get() = selectedConversationId?.let(pendingCopyByConversation::get)
 
     var conversationPaneState by mutableStateOf(
         ConversationPaneUiState(
@@ -193,8 +200,9 @@ internal class AgentAppState(
     /** 订阅运行时发布的内嵌选项请求，驱动输入框上方面板渲染。 */
     private fun observePendingChoice() {
         scope.launch {
-            AgentRuntimeService.pendingChoice.collectLatest { request ->
-                pendingChoice = request
+            AgentRuntimeService.pendingChoice.collectLatest { requests ->
+                pendingChoiceByConversation = requests
+                syncChoiceTimeoutWithVisibility(requests.keys)
             }
         }
     }
@@ -202,8 +210,25 @@ internal class AgentAppState(
     /** 订阅运行时发布的内嵌复制请求，驱动输入框上方复制卡片渲染。 */
     private fun observePendingCopy() {
         scope.launch {
-            AgentRuntimeService.pendingCopy.collectLatest { request ->
-                pendingCopy = request
+            AgentRuntimeService.pendingCopy.collectLatest { requests ->
+                pendingCopyByConversation = requests
+            }
+        }
+    }
+
+    /**
+     * 让超时计时跟「用户看得见哪张卡」对齐。
+     *
+     * 卡片可能是用户正在别的会话时冒出来的，那一刻它同样没被看见：
+     * 不暂停的话，等用户切回来，卡片已经按超时自己走掉，模型也按推荐项继续了。
+     */
+    private fun syncChoiceTimeoutWithVisibility(keys: Set<String>) {
+        val visibleKey = selectedConversationId
+        keys.forEach { key ->
+            if (key == visibleKey) {
+                AgentRuntimeService.resumeChoiceTimeoutFor(key)
+            } else {
+                AgentRuntimeService.pauseChoiceTimeoutFor(key)
             }
         }
     }
@@ -353,7 +378,7 @@ internal class AgentAppState(
             contentMatchCache.clear()
             conversationSearchJob?.cancel()
             persistedSearchMatches = emptySet()
-            selectedConversationId = snapshot.selectedConversationId
+            setSelectedConversationKey(snapshot.selectedConversationId)
             conversationsById = snapshot.conversationsById
             conversationTitles = snapshot.titles
             conversationUpdatedAt = snapshot.updatedAt
@@ -831,7 +856,7 @@ internal class AgentAppState(
         cancelHistoryPageLoad()
         conversationSelectionJob?.cancel()
         fileAttachmentOwnerVersion += 1
-        selectedConversationId = conversationId
+        setSelectedConversationKey(conversationId)
         homeState = state
         conversationLoadFailed = false
         isLoadingConversation = !state.isConversationLoaded
@@ -1027,7 +1052,7 @@ internal class AgentAppState(
         conversationLoadFailed = false
         if (homeState.messageEdit != null) cancelMessageEdit()
         fileAttachmentOwnerVersion += 1
-        selectedConversationId = null
+        setSelectedConversationKey(null)
         homeState = emptyChatState(defaultThinkingEnabled)
         refreshConversationModel()
         conversationPaneState = conversationPaneState.copy(
@@ -1087,6 +1112,9 @@ internal class AgentAppState(
     private fun deleteSettledConversation(conversationId: String) {
         pendingConversationDeletes.remove(conversationId)
         BrowserSessionRegistry.requestRemove(conversationId)
+        /* 会话没了，它那张卡片也就没有归属：先让阻塞中的 ask_choice 收到取消，
+           否则工具线程会一直等到超时才放行，而界面上已经看不到这张卡了。 */
+        cancelInteractionCardsFor(conversationId)
         val wasSelected = selectedConversationId == conversationId
         conversationsById = conversationsById - conversationId
         conversationTitles = conversationTitles - conversationId
@@ -1100,10 +1128,10 @@ internal class AgentAppState(
             fileAttachmentOwnerVersion += 1
             val nextId = conversationsById.keys.firstOrNull()
             if (nextId != null) {
-                selectedConversationId = nextId
+                setSelectedConversationKey(nextId)
                 homeState = conversationsById.getValue(nextId)
             } else {
-                selectedConversationId = null
+                setSelectedConversationKey(null)
                 homeState = emptyChatState(defaultThinkingEnabled)
             }
             if (nextId != null) selectConversation(nextId) else refreshConversationModel()
@@ -1212,14 +1240,48 @@ internal class AgentAppState(
         submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = false)
     }
 
-    /** 内嵌选项面板的结论回传给阻塞中的工具线程。 */
-    fun resolveChoice(result: AgentChoiceResult) {
-        AgentInteraction.resolveChoice(result)
+    /**
+     * 切换当前会话，并同步卡片超时计时的启停。
+     *
+     * 卡片跟着会话走：切走时暂停旧会话的计时，切入时按剩余时长继续。
+     * 不这么做，用户在别的会话聊久了回来，卡片早已按超时自己走掉，模型也按推荐项推进了。
+     */
+    private fun setSelectedConversationKey(next: String?) {
+        val previous = selectedConversationId
+        if (previous != null && previous != next) {
+            AgentRuntimeService.pauseChoiceTimeoutFor(previous)
+        }
+        if (next != null) {
+            AgentRuntimeService.resumeChoiceTimeoutFor(next)
+        }
+        selectedConversationId = next
     }
 
-    /** 内嵌复制卡片收起（用户点关闭/复制后自动收起），清空复制请求状态。 */
+    /**
+     * 取消某个会话挂着的交互卡片。
+     *
+     * 会话被删除或清空时调用：卡片状态与阻塞中的调用方一起收尾，不留悬空等待。
+     */
+    private fun cancelInteractionCardsFor(conversationId: String) {
+        pendingChoiceByConversation = pendingChoiceByConversation - conversationId
+        pendingCopyByConversation = pendingCopyByConversation - conversationId
+        AgentInteraction.resolveChoice(AgentChoiceResult.Cancelled, conversationId)
+    }
+
+    /** 内嵌选项面板的结论回传给阻塞中的工具线程。 */
+    fun resolveChoice(result: AgentChoiceResult) {
+        /* 只结算当前会话那一张：切到别的会话时界面看不到这张卡，也就不该能替它作答。 */
+        selectedConversationId?.let { key -> AgentInteraction.resolveChoice(result, key) }
+    }
+
+    /** 内嵌复制卡片收起（用户点关闭/复制后自动收起），清空当前会话的复制请求状态。 */
     fun dismissCopyCard() {
-        pendingCopy = null
+        selectedConversationId?.let { key ->
+            pendingCopyByConversation = pendingCopyByConversation - key
+            /* 请求状态由运行时发布、界面只读，光清本地 map 会在下一次无关发布时被复原；
+               必须回传给宿主把该会话的请求真正摘掉。 */
+            AgentInteraction.dismissCopyCard(key)
+        }
     }
 
     fun interruptAndSendCurrentMessage(submittedText: String? = null) {
@@ -1262,9 +1324,12 @@ internal class AgentAppState(
     ) {
         // 面板还挂着时，用户在底部主输入框直接发送 = 取消这次选择、以文字作答。
         // 先解除阻塞中的 ask_choice 并清掉面板，避免面板残留且 X 关不掉。
+        // 只取消当前会话那一张：别的会话挂着的卡片不该被这里的发送行为误取消。
         if (pendingChoice != null) {
-            AgentInteraction.resolveChoice(AgentChoiceResult.Cancelled)
-            pendingChoice = null
+            selectedConversationId?.let { key ->
+                AgentInteraction.resolveChoice(AgentChoiceResult.Cancelled, key)
+                pendingChoiceByConversation = pendingChoiceByConversation - key
+            }
         }
         if (!homeState.isConversationLoaded || homeState.isCompacting ||
             selectedConversationId in pendingConversationDeletes) return
@@ -1335,7 +1400,7 @@ internal class AgentAppState(
         }
 
         val conversationId = selectedConversationId ?: newConversationId().also {
-            selectedConversationId = it
+            setSelectedConversationKey(it)
         }
         dispatchMessageToConversation(
             conversationId = conversationId,
@@ -1563,7 +1628,7 @@ internal class AgentAppState(
             conversationTitles = conversationTitles - conversationId
             conversationUpdatedAt = conversationUpdatedAt - conversationId
             fileAttachmentOwnerVersion += 1
-            selectedConversationId = null
+            setSelectedConversationKey(null)
             homeState = emptyChatState(defaultThinkingEnabled)
             refreshConversationModel()
             conversationPaneState = conversationPaneState.copy(selectedConversationId = null)
@@ -2276,7 +2341,7 @@ internal class AgentAppState(
 
     private fun moveCurrentDraftToNewConversation() {
         val draft = homeState
-        selectedConversationId = null
+        setSelectedConversationKey(null)
         homeState = emptyChatState(defaultThinkingEnabled).copy(
             input = draft.input,
             thinkingEnabled = draft.reasoningEffort.enablesReasoning,

@@ -76,6 +76,14 @@ import kotlinx.coroutines.runBlocking
 internal class AgentLocalTools(
     private val context: Context,
     private val logger: AgentLogger,
+    /**
+     * 本次运行归属的会话身份，与 AgentConversationIdentity 同一套取值。
+     *
+     * 选项卡片与复制卡片都按它归属，这样卡片不会跑到别的会话里。
+     * 没有会话归属的运行取 `run:<runId>`，这类键在界面上没有位置，交互层会退化：
+     * 选项卡片不弹、由模型改用文字提问，复制卡片则让调用方退回 set_clipboard。
+     */
+    private val conversationKey: String = "",
     private val browserRunId: String = "",
     private val browserToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS)
@@ -367,6 +375,7 @@ internal class AgentLocalTools(
             subtitle = args.optString("subtitle").trim().take(AgentChoiceMaxTextChars * 2),
             options = options,
             timeoutMs = timeoutMs,
+            conversationKey = conversationKey,
         )
         return when (val outcome = AgentInteraction.requestChoice(request) { closed.get() }) {
             is AgentChoiceResult.Selected -> JSONObject()
@@ -397,7 +406,7 @@ internal class AgentLocalTools(
                 .put("ok", false)
                 .put("code", "CHOICE_CARD_UNAVAILABLE")
                 .put("answered", false)
-                .put("message", "当前无法显示选项卡片（浮窗未就绪或已有另一张卡片在等）；改用文字提问")
+                .put("message", "当前无法显示选项卡片（浮窗未就绪或本会话已有一张在等）；改用文字提问")
                 .toString()
         }
     }
@@ -407,7 +416,7 @@ internal class AgentLocalTools(
         val text = args.optString("text").takeIf(String::isNotBlank)
             ?: throw InvalidToolArgumentException("text 不能为空")
         val title = args.optString("title").trim().take(AgentChoiceMaxTextChars)
-        val shown = AgentInteraction.showCopyCard(title, text)
+        val shown = AgentInteraction.showCopyCard(title, text, conversationKey)
         return JSONObject()
             .put("ok", true)
             .put("card_shown", shown)

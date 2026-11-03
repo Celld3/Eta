@@ -5,6 +5,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 
 /**
  * 由系统分享菜单或划词菜单送进本体的内容。
@@ -149,3 +150,22 @@ internal fun SharedContentIntake.composeDraft(
 
 /** 单次预填的正文上限：再长多半是整篇文章，塞进输入框只会让编辑变难。 */
 internal const val MAX_DRAFT_SOURCE_CHARS = 8_000
+
+/**
+ * 决定本次启动的预填草稿从哪里来。
+ *
+ * 冷启动解析分享 Intent；界面重建时只还原已保存内容，因为重建同样带着原始 Intent，
+ * 再解析一次等于把同一段内容重复填回输入框。
+ *
+ * 之所以单独抽成纯函数：这一步在 `setContent` 之前执行，写错不会有任何界面症状，
+ * 只有真机冷启动才看得出来，必须能被单测直接覆盖。
+ */
+internal fun initialSharedIntake(
+    savedInstanceState: Bundle?,
+    parseFromIntent: () -> SharedContentIntake?,
+    restoreFromState: (Bundle) -> SharedContentIntake?,
+): SharedContentIntake? = if (savedInstanceState == null) {
+    parseFromIntent()
+} else {
+    restoreFromState(savedInstanceState)
+}

@@ -44,12 +44,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         launchRequests = MainActivityLaunchRequests.restore(savedInstanceState, intent)
         /* 重建时只还原已保存的预填草稿，不重新解析启动 Intent，避免重复预填。 */
-        sharedIntake = if (savedInstanceState == null) {
-            acceptSharedContent(intent)
-            null
-        } else {
-            restoreSharedIntake(savedInstanceState)
-        }
+        sharedIntake = initialSharedIntake(
+            savedInstanceState = savedInstanceState,
+            parseFromIntent = { parseSharedContent(intent) },
+            restoreFromState = ::restoreSharedIntake,
+        )
         lifecycleScope.launch {
             val initialAppearance = AppearanceSettingsRepository.settings()
             appliedPredictiveBackEnabled = initialAppearance.predictiveBackEnabled
@@ -146,7 +145,12 @@ class MainActivity : ComponentActivity() {
      * 解析不出可读内容时返回 null，界面保持原样，不弹空对话框。
      */
     private fun acceptSharedContent(intent: Intent?) {
-        val intake = SharedContentIntakeParser.parse(
+        parseSharedContent(intent)?.let { sharedIntake = it }
+    }
+
+    /** 解析启动 Intent 里的分享内容；解析不出可读内容时返回 null。 */
+    private fun parseSharedContent(intent: Intent?): SharedContentIntake? =
+        SharedContentIntakeParser.parse(
             intent = intent,
             sourceAppLabel = SharedSourceAppResolver.resolve(
                 context = applicationContext,
@@ -154,8 +158,6 @@ class MainActivity : ComponentActivity() {
             ),
             nonce = SystemClock.elapsedRealtimeNanos(),
         )
-        if (intake != null) sharedIntake = intake
-    }
 
     private fun restoreSharedIntake(savedInstanceState: Bundle): SharedContentIntake? {
         val saved = savedInstanceState.getBundle(STATE_SHARED_INTAKE) ?: return null

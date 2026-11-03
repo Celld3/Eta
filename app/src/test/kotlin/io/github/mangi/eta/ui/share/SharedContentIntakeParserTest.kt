@@ -2,6 +2,7 @@ package io.github.mangi.eta.ui.share
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -125,5 +126,46 @@ class SharedContentIntakeParserTest {
             .composeDraft(sourceLine = null)
 
         assertEquals(MAX_DRAFT_SOURCE_CHARS + 2, draft.length)
+    }
+
+    @Test
+    fun `冷启动解析分享内容而不是丢弃`() {
+        val parsed = SharedContentIntake(text = "from wechat", sourceAppLabel = "WeChat", nonce = 3L)
+
+        val intake = initialSharedIntake(
+            savedInstanceState = null,
+            parseFromIntent = { parsed },
+            restoreFromState = { error("重建才走还原分支") },
+        )
+
+        assertEquals(parsed, intake)
+    }
+
+    @Test
+    fun `重建时只还原已保存内容不重复解析`() {
+        val restored = SharedContentIntake(text = "kept", sourceAppLabel = null, nonce = 1L)
+        val state = Bundle()
+
+        val intake = initialSharedIntake(
+            savedInstanceState = state,
+            parseFromIntent = { error("重建不该再解析 Intent") },
+            restoreFromState = { bundle ->
+                assertEquals(state, bundle)
+                restored
+            },
+        )
+
+        assertEquals(restored, intake)
+    }
+
+    @Test
+    fun `解析不出内容时预填为空而不是报错`() {
+        val intake = initialSharedIntake(
+            savedInstanceState = null,
+            parseFromIntent = { null },
+            restoreFromState = { error("重建才走还原分支") },
+        )
+
+        assertNull(intake)
     }
 }

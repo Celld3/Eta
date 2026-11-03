@@ -1477,4 +1477,5 @@
     <string name="data_backup_auto_restore_confirm_summary">会话、记忆与技能会被这份备份替换；备份里没有的技能会保留。</string>
     <string name="data_backup_auto_delete_confirm_title">删除这份备份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只删除应用内的这个文件，删除后无法撤销。</string>
+    <string name="chat_shared_content_source">来自 %1$s</string>
 </resources>

@@ -52,6 +52,7 @@ import io.github.mangi.eta.ui.AppearanceSettingsScreen
 import io.github.mangi.eta.ui.SettingsScreen
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.model.AgentHomeAction
+import io.github.mangi.eta.ui.share.SharedContentIntake
 import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentSkillsAction
 import io.github.mangi.eta.ui.model.AgentSystemEnhanceAction
@@ -121,6 +122,9 @@ fun AgentAppRoot(
     onTerminalOpened: () -> Unit = {},
     onSpeechSettingsOpened: () -> Unit = {},
     onAssistantConversationOpened: (Boolean) -> Unit = {},
+    /** 系统分享或划词送进来的内容；只预填草稿，不自动发送。 */
+    sharedIntake: SharedContentIntake? = null,
+    onSharedIntakeConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -142,6 +146,19 @@ fun AgentAppRoot(
     var navigationResetKey by rememberSaveable { mutableIntStateOf(0) }
     val appViewModel = viewModel<AgentAppViewModel>()
     val agentState = appViewModel.state
+    // 会话切换中或正在编辑历史消息时会拒收，此时保留 intake，等状态恢复后再预填一次。
+    LaunchedEffect(sharedIntake, agentState.homeState.isConversationLoaded, agentState.homeState.messageEdit) {
+        val intake = sharedIntake ?: return@LaunchedEffect
+        /* 从二级页分享进来时先回到对话页，否则预填的内容藏在看不到的输入框里。 */
+        navigator.popToHome()
+        /* 预填完成即通知入口清空：同一段内容不会因为界面重建被反复填回输入框。 */
+        if (agentState.applySharedContentDraft(intake, sharedSourceLine = {
+                resources.getString(R.string.chat_shared_content_source, it)
+            })
+        ) {
+            onSharedIntakeConsumed()
+        }
+    }
     val runtimeActive by AgentRuntimeService.keepScreenOn.collectAsState()
     val view = LocalView.current
     val keepScreenOn = backStack.lastOrNull() == AppRoute.Home &&

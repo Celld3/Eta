@@ -1408,4 +1408,5 @@
     <string name="data_backup_auto_restore_confirm_summary">會話、記憶與技能會被這份備份取代；備份裡沒有的技能會保留。</string>
     <string name="data_backup_auto_delete_confirm_title">刪除這份備份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只刪除應用程式內的這個檔案，刪除後無法復原。</string>
+    <string name="chat_shared_content_source">來自 %1$s</string>
 </resources>

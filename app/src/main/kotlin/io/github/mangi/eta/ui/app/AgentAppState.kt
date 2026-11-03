@@ -75,6 +75,8 @@ import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.contentMatches
+import io.github.mangi.eta.ui.share.SharedContentIntake
+import io.github.mangi.eta.ui.share.composeDraft
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
@@ -1167,6 +1169,42 @@ internal class AgentAppState(
             SystemNoticeCode.Interrupted -> R.string.system_notice_interrupted
         },
     )
+
+    /**
+     * 把分享或划词送来的内容预填进当前草稿，不发送。
+     *
+     * 已有草稿时追加在后面而不是覆盖：用户可能正在写好要求，分享只是补充素材。
+     * 图片沿用 [attachImage] 的读取与压缩路径，保证与手动选图得到同一份引用。
+     * 返回 false 表示当前状态不接受预填：会话未加载完、正在编辑历史消息或会话正被删除。
+     */
+    fun applySharedContentDraft(
+        intake: SharedContentIntake,
+        sharedSourceLine: (String) -> String,
+    ): Boolean {
+        // 正在输出时输入框仍可编辑，草稿可以照常预填；真正接不住的是历史消息编辑态和会话切换中。
+        if (!homeState.isConversationLoaded || homeState.messageEdit != null) return false
+        if (selectedConversationId in pendingConversationDeletes) return false
+        val sourceLine = intake.sourceAppLabel?.let { label ->
+            sharedSourceLine(label).takeIf { it.isNotBlank() }
+        }
+        val draft = intake.composeDraft(sourceLine)
+        if (draft.isNotBlank()) {
+            val merged = when {
+                homeState.input.isBlank() -> draft
+                else -> homeState.input.trimEnd() + "\n" + draft
+            }
+            updateCurrentConversation(
+                homeState.copy(
+                    input = merged,
+                    inputSyncVersion = homeState.inputSyncVersion + 1,
+                ),
+                updateTimestamp = false,
+            )
+        }
+        /* 图片在正文之后挂上：多图分享时任一失败只丢那一张，正文仍然留在草稿里。 */
+        intake.imageUris.forEach(::attachImage)
+        return true
+    }
 
     fun sendCurrentMessage(submittedText: String? = null) {
         submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = false)

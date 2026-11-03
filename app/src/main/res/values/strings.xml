@@ -1496,4 +1496,5 @@
     <string name="data_backup_auto_restore_confirm_summary">Conversations, memory, and skills will be replaced by this backup. Skills not in the backup are kept.</string>
     <string name="data_backup_auto_delete_confirm_title">Delete this backup?</string>
     <string name="data_backup_auto_delete_confirm_summary">This only removes the file from app storage and cannot be undone.</string>
+    <string name="chat_shared_content_source">From %1$s</string>
 </resources>

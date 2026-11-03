@@ -10,6 +10,8 @@ import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.ProviderEntity
 import io.github.mangi.eta.data.db.ProviderModelEntity
 import io.github.mangi.eta.data.db.ProviderWithModelsSeed
+import io.github.mangi.eta.data.backup.SkillBackupRecord
+import io.github.mangi.eta.data.backup.SkillBackupTransfer
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.model.ProviderAuthModes
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -48,7 +50,8 @@ internal data class EtaBackupDocument(
     companion object {
         const val FORMAT = "eta-backup"
         // 旧版会把未知原生 Provider 当作 OpenAI-compatible，必须通过备份版本阻止错误恢复。
-        const val SCHEMA_VERSION = 4
+        // v5 新增 skills 记录数组；v4 及更早的包没有该字段，恢复时跳过技能部分。
+        const val SCHEMA_VERSION = 5
     }
 }
 
@@ -65,6 +68,7 @@ internal data class EtaBackupSummary(
     val messageCount: Int,
     val memoryBytes: Int,
     val characterCount: Int = 0,
+    val skillCount: Int = 0,
 )
 
 internal class EtaBackupException(message: String, cause: Throwable? = null) :
@@ -82,7 +86,7 @@ internal object EtaBackupRepository {
             val settings = SettingsDataStore.settings()
             val catalogRevision = SettingsDataStore.officialModelCatalogRevision()
             EtaBackupJsonStreams.export(appContext, output, onPhase = { phase = it }) { writer ->
-                database.withTransaction {
+                val base = database.withTransaction {
                     val dao = database.conversationDao()
                     val providers = database.providerDao().providers().map {
                         EtaBackupProvider(it.provider.withoutOAuthSecrets(), it.models)
@@ -127,9 +131,20 @@ internal object EtaBackupRepository {
                     phase = "export_roleplay"
                     val roleplay = CharacterBackupTransfer.snapshot(appContext, boundAvatars)
                     writer.value("roleplay", CharacterBackupData.serializer().nullable, roleplay)
-                    EtaBackupSummary(providers.size, providers.sumOf { it.models.size }, conversationCount,
-                        messageCount, memory.toByteArray(Charsets.UTF_8).size, roleplay.characters.size)
+                    EtaBackupSummary(providers.size, providers.sumOf { it.models.size },
+                        conversationCount, messageCount, memory.toByteArray(Charsets.UTF_8).size,
+                        roleplay.characters.size, 0)
                 }
+                // 技能导出必须发生在数据库事务之外：索引服务会获取跨进程文件锁，
+                // 与进行中的 Room 事务互相等待会造成备份挂死。
+                phase = "export_skills"
+                writer.beginArray(EtaBackupJsonStreams.SKILLS)
+                val skillCount = SkillBackupTransfer.exportSkills(appContext) { record ->
+                    writer.record(SkillBackupRecord.serializer(), record)
+                }
+                writer.endArray()
+                // 这个 lambda 必须返回摘要，不能以赋值结尾。
+                base.copy(skillCount = skillCount)
             }
         } catch (failure: Throwable) {
             logFailure("export", phase, failure)
@@ -144,6 +159,7 @@ internal object EtaBackupRepository {
         forgetCredentials: (String) -> Unit = ProviderCredentialRepository::forget,
     ): EtaBackupSummary = withContext(Dispatchers.IO) {
         var phase = "stage_import"
+        var restoredSkills = 0
         try {
             val appContext = context.applicationContext
             EtaBackupJsonStreams.stage(appContext, input) { phase = it }.use { staged ->
@@ -248,8 +264,38 @@ internal object EtaBackupRepository {
                     } catch (failure: Exception) {
                         throw IllegalStateException("数据已导入，但默认模型设置未完全恢复，请重新选择服务商和模型。", failure)
                     }
+                    // 技能恢复是合并式的：只覆盖同名技能，不删除本地独有技能。
+                    // v4 及更早的包没有 skills 数组，staged.skills 自然为空，跳过即可。
+                    phase = "restore_skills"
+                    val skillFailures = mutableListOf<String>()
+                    val restoredRecords = mutableListOf<SkillBackupRecord>()
+                    runCatching {
+                        staged.skills { record ->
+                            cancellation.ensureActive()
+                            if (SkillBackupTransfer.restoreSkill(appContext, record)) {
+                                restoredSkills++
+                                restoredRecords += record
+                            } else if (record.skippedReason == null) {
+                                skillFailures += record.id
+                            }
+                        }
+                        // registry 写入放在这里而不是 Room 事务内，避免与技能文件锁交叉等待。
+                        if (restoredRecords.isNotEmpty()) {
+                            SkillBackupTransfer.restoreRegistry(appContext, restoredRecords)
+                        }
+                    }.onFailure { failure ->
+                        if (failure is CancellationException) throw failure
+                        AndroidAgentLogger.warn(
+                            "Agent skill restore incomplete: type=${failure.safeLogType()}"
+                        )
+                    }
+                    if (skillFailures.isNotEmpty()) {
+                        throw IllegalStateException(
+                            "数据已导入，但 ${skillFailures.size} 个技能未能恢复：${skillFailures.take(3).joinToString()}",
+                        )
+                    }
                 }
-                summary
+                summary.copy(skillCount = restoredSkills)
             }
         } catch (failure: Throwable) {
             logFailure("import", phase, failure)

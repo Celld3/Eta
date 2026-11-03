@@ -12,6 +12,7 @@ import io.github.mangi.eta.agent.terminal.TerminalRuntime
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
+import io.github.mangi.eta.data.backup.AutoBackupScheduler
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
@@ -79,6 +80,15 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
                     "Agent skill index prewarm failed: type=${throwable.safeLogType()}"
                 )
             }
+        }
+        // 闹钟队列不跨重启与崩溃保留，每次启动重建一次，保证自动备份不会静默停摆。
+        applicationScope.launch {
+            runCatching { AutoBackupScheduler.schedule(this@EtaApp) }
+                .onFailure { throwable ->
+                    AndroidAgentLogger.warn(
+                        "Agent auto backup schedule failed: type=${throwable.safeLogType()}"
+                    )
+                }
         }
     }
 

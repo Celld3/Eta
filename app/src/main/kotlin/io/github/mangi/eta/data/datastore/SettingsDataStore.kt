@@ -16,6 +16,7 @@ import io.github.mangi.eta.data.model.AppearancePaletteStyle
 import io.github.mangi.eta.data.model.AppearanceSettings
 import io.github.mangi.eta.data.model.AppearanceThemeMode
 import io.github.mangi.eta.data.model.AppearanceTopBarBlurStyle
+import io.github.mangi.eta.data.model.AutoBackupSettings
 import io.github.mangi.eta.data.model.SpeechSettings
 import io.github.mangi.eta.data.model.SubagentSettings
 import io.github.mangi.eta.data.model.WebToolsSettings
@@ -31,6 +32,7 @@ internal object SettingsDataStore {
     private val SPEECH_SETTINGS = stringPreferencesKey("speech_settings_v1")
     private val WEB_TOOLS_SETTINGS = stringPreferencesKey("web_tools_settings_v1")
     private val SUBAGENT_SETTINGS = stringPreferencesKey("subagent_settings_v1")
+    private val AUTO_BACKUP_SETTINGS = stringPreferencesKey("auto_backup_settings_v1")
     private val speechJson = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -90,6 +92,31 @@ internal object SettingsDataStore {
     suspend fun setSubagentSettings(settings: SubagentSettings) {
         ensureInitialized()
         dataStore.edit { it[SUBAGENT_SETTINGS] = speechJson.encodeToString(settings) }
+    }
+
+    fun autoBackupSettingsFlow(): Flow<AutoBackupSettings> {
+        ensureInitialized()
+        return dataStore.data
+            .catch { cause ->
+                if (cause is IOException) emit(emptyPreferences()) else throw cause
+            }
+            .map { prefs ->
+                prefs[AUTO_BACKUP_SETTINGS]?.let { raw ->
+                    runCatching { speechJson.decodeFromString<AutoBackupSettings>(raw) }.getOrNull()
+                }?.sanitized() ?: AutoBackupSettings()
+            }
+    }
+
+    suspend fun autoBackupSettings(): AutoBackupSettings = autoBackupSettingsFlow().first()
+
+    suspend fun setAutoBackupSettings(transform: (AutoBackupSettings) -> AutoBackupSettings) {
+        ensureInitialized()
+        dataStore.edit { prefs ->
+            val current = prefs[AUTO_BACKUP_SETTINGS]
+                ?.let { raw -> runCatching { speechJson.decodeFromString<AutoBackupSettings>(raw) }.getOrNull() }
+                ?: AutoBackupSettings()
+            prefs[AUTO_BACKUP_SETTINGS] = speechJson.encodeToString(transform(current).sanitized())
+        }
     }
 
     private const val STORE_NAME = "eta_settings"

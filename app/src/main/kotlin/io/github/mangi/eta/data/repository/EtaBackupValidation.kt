@@ -44,6 +44,24 @@ internal object EtaBackupValidation {
                 if (!checkpointIds.add(row.conversationId)) throw EtaBackupException("备份中的上下文检查点重复")
             }
             header.roleplay?.let { CharacterBackupTransfer.validate(it, bindingIds) }
+            val skillIds = mutableSetOf<String>()
+            var skillCount = 0
+            staged.skills { record ->
+                if (record.id.isBlank()) throw EtaBackupException("备份中的技能缺少 ID")
+                if (!skillIds.add(record.id)) throw EtaBackupException("备份中的技能 ID 重复")
+                if (record.id.contains('/') || record.id.contains('\\')) {
+                    throw EtaBackupException("备份中的技能 ID 不合法")
+                }
+                record.files.forEach { file ->
+                    val path = file.path
+                    if (path.isBlank() || path.startsWith("/") || path.contains('\\') ||
+                        path.split('/').any { it.isEmpty() || it == "." || it == ".." }
+                    ) {
+                        throw EtaBackupException("备份中的技能文件路径不合法")
+                    }
+                }
+                skillCount++
+            }
             return EtaBackupSummary(
                 providerCount = header.providers.size,
                 modelCount = header.providers.sumOf { it.models.size },
@@ -51,6 +69,7 @@ internal object EtaBackupValidation {
                 messageCount = messageCount,
                 memoryBytes = header.memoryMd.toByteArray(Charsets.UTF_8).size,
                 characterCount = header.roleplay?.characters?.size ?: 0,
+                skillCount = skillCount,
             )
         } catch (failure: IllegalArgumentException) {
             if (failure is EtaBackupException) throw failure

@@ -172,6 +172,7 @@ dependencies {
 
     // DataStore：Provider / Model 结构化 JSON 与当前选中 ID 等键值
     implementation(libs.datastore.preferences)
+    implementation(libs.androidx.work.runtime)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

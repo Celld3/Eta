@@ -8,6 +8,7 @@ import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.db.ConversationContextCheckpointEntity
 import io.github.mangi.eta.data.db.ConversationEntity
 import io.github.mangi.eta.data.db.ConversationMessageEntity
+import io.github.mangi.eta.data.backup.SkillBackupRecord
 import java.io.File
 import java.io.FilterInputStream
 import java.io.FilterOutputStream
@@ -35,7 +36,10 @@ internal object EtaBackupJsonStreams {
     const val CONVERSATIONS = "conversations"
     const val MESSAGES = "messages"
     const val CHECKPOINTS = "contextCheckpoints"
-    private val recordFields = setOf(CONVERSATIONS, MESSAGES, CHECKPOINTS)
+    // 技能含内联 base64 资源，必须与 conversations 同为大数组逐条落盘，
+    // 否则整个技能集合会进入 header 并一次性解码进内存。
+    const val SKILLS = "skills"
+    private val recordFields = setOf(CONVERSATIONS, MESSAGES, CHECKPOINTS, SKILLS)
     private val knownFields = EtaBackupDocument.serializer().descriptor.let { descriptor ->
         (0 until descriptor.elementsCount).mapTo(mutableSetOf(), descriptor::getElementName)
     }
@@ -129,6 +133,7 @@ internal object EtaBackupJsonStreams {
         suspend fun conversations(action: suspend (ConversationEntity) -> Unit) = records(CONVERSATIONS, action)
         suspend fun messages(action: suspend (ConversationMessageEntity) -> Unit) = records(MESSAGES, action)
         suspend fun checkpoints(action: suspend (ConversationContextCheckpointEntity) -> Unit) = records(CHECKPOINTS, action)
+        suspend fun skills(action: suspend (SkillBackupRecord) -> Unit) = records(SKILLS, action)
 
         private suspend inline fun <reified T> records(field: String, noinline action: suspend (T) -> Unit) {
             val file = File(directory, "$field.json")

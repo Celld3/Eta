@@ -50,6 +50,9 @@ class GeminiProviderConfigurationTest {
         }
     }
 
+    // 备份文档随版本新增字段，测试解析需容忍未知键，与线上 EtaBackupJsonStreams 保持一致。
+    private val backupJson = Json { ignoreUnknownKeys = true }
+
     @Test
     fun customNativeProxyRoundTripsCopiesAndProjectsWithoutAnOpenAiEndpoint() = runBlocking {
         val source = GeminiProviderSetting(
@@ -131,8 +134,9 @@ class GeminiProviderConfigurationTest {
         val output = ByteArrayOutputStream()
         EtaBackupRepository.export(context, output)
         val raw = output.toString(Charsets.UTF_8.name())
-        val document = Json.decodeFromString<EtaBackupDocument>(raw)
-        assertEquals(4, document.schemaVersion)
+        val document = backupJson.decodeFromString<EtaBackupDocument>(raw)
+        // 版本号随备份格式演进，断言与当前常量一致而不是写死数字。
+        assertEquals(EtaBackupDocument.SCHEMA_VERSION, document.schemaVersion)
         assertTrue(document.schemaVersion > 3)
         assertEquals(ProviderTypes.GEMINI, document.providers.single { it.provider.id == source.id }.provider.type)
         ProviderRepository.deleteProvider(source.id)

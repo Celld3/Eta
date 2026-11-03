@@ -70,9 +70,9 @@ class SharedContentIntakeParserTest {
     }
 
     @Test
-    fun `多图分享超过上限时只保留前几张`() {
+    fun `多图分享不限数量全部接收`() {
         val uris = ArrayList<Uri>()
-        repeat(6) { index -> uris.add(Uri.parse("content://media/images/$index")) }
+        repeat(12) { index -> uris.add(Uri.parse("content://media/images/$index")) }
 
         val intake = SharedContentIntakeParser.parse(
             intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
@@ -83,8 +83,9 @@ class SharedContentIntakeParserTest {
             nonce = 1L,
         )
 
-        assertEquals(SharedContentIntakeParser.MAX_SHARED_IMAGES, intake?.imageUris?.size)
+        assertEquals(12, intake?.imageUris?.size)
         assertEquals("content://media/images/0", intake?.imageUris?.first())
+        assertEquals("content://media/images/11", intake?.imageUris?.last())
     }
 
     @Test

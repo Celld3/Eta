@@ -33,12 +33,11 @@ internal object SharedContentIntakeParser {
         intent: Intent?,
         sourceAppLabel: String?,
         nonce: Long,
-        maxImages: Int = MAX_SHARED_IMAGES,
     ): SharedContentIntake? {
         val action = intent?.action ?: return null
         val intake = when (action) {
-            Intent.ACTION_SEND -> read(intent, sourceAppLabel, nonce, maxImages, multiple = false)
-            Intent.ACTION_SEND_MULTIPLE -> read(intent, sourceAppLabel, nonce, maxImages, multiple = true)
+            Intent.ACTION_SEND -> read(intent, sourceAppLabel, nonce, multiple = false)
+            Intent.ACTION_SEND_MULTIPLE -> read(intent, sourceAppLabel, nonce, multiple = true)
             Intent.ACTION_PROCESS_TEXT -> SharedContentIntake(
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty(),
                 sourceAppLabel = sourceAppLabel,
@@ -49,15 +48,18 @@ internal object SharedContentIntakeParser {
         return intake.takeUnless { it.isEmpty }
     }
 
+    /**
+     * 图片数量不设上限：与手动选图保持同一行为，多收的图由用户在输入框自行删除。
+     * 真要防爆已有单张 12MB 的编码上限与预览图，不再按张数拍一个说不清的数字。
+     */
     private fun read(
         intent: Intent,
         sourceAppLabel: String?,
         nonce: Long,
-        maxImages: Int,
         multiple: Boolean,
     ): SharedContentIntake = SharedContentIntake(
         text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty(),
-        imageUris = readImages(intent, multiple).take(maxImages),
+        imageUris = readImages(intent, multiple),
         sourceAppLabel = sourceAppLabel,
         nonce = nonce,
     )
@@ -77,8 +79,6 @@ internal object SharedContentIntakeParser {
     private fun isReadableScheme(uri: Uri): Boolean =
         uri.scheme == "content" || uri.scheme == "file"
 
-    /** 分享整篇文章时正文会很长；只保留前几张图，避免一次请求塞满上下文。 */
-    const val MAX_SHARED_IMAGES = 4
 }
 
 /**

@@ -168,4 +168,84 @@ class SharedContentIntakeParserTest {
 
         assertNull(intake)
     }
+
+    @Test
+    fun `非图片附件走文件通道而不是被丢弃`() {
+        val intake = SharedContentIntakeParser.parse(
+            intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, Uri.parse("content://com.tencent.mm/file/1"))
+            },
+            sourceAppLabel = null,
+            nonce = 1L,
+        )
+
+        assertTrue(intake!!.imageUris.isEmpty())
+        assertEquals(listOf("content://com.tencent.mm/file/1"), intake.fileUris)
+    }
+
+    @Test
+    fun `按真实 MIME 分流而不信声明类型`() {
+        val intake = SharedContentIntakeParser.parse(
+            intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, Uri.parse("content://media/images/9"))
+            },
+            sourceAppLabel = null,
+            nonce = 1L,
+            mimeTypeOf = { "image/jpeg" },
+        )
+
+        assertEquals(listOf("content://media/images/9"), intake?.imageUris)
+        assertTrue(intake!!.fileUris.isEmpty())
+    }
+
+    @Test
+    fun `判不出类型时按普通文件处理`() {
+        val intake = SharedContentIntakeParser.parse(
+            intent = Intent(Intent.ACTION_SEND).apply {
+                type = "*/*"
+                putExtra(Intent.EXTRA_STREAM, Uri.parse("content://unknown/1"))
+            },
+            sourceAppLabel = null,
+            nonce = 1L,
+        )
+
+        assertEquals(listOf("content://unknown/1"), intake?.fileUris)
+        assertTrue(intake!!.imageUris.isEmpty())
+    }
+
+    @Test
+    fun `多文件分享按上限截断`() {
+        val many = ArrayList<Uri>()
+        repeat(MAX_SHARED_FILES + 5) { index ->
+            many.add(Uri.parse("content://docs/item/$index"))
+        }
+
+        val intake = SharedContentIntakeParser.parse(
+            intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "application/pdf"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, many)
+            },
+            sourceAppLabel = null,
+            nonce = 1L,
+        )
+
+        assertEquals(MAX_SHARED_FILES, intake?.fileUris?.size)
+    }
+
+    @Test
+    fun `只有附件没有正文也算有效预填`() {
+        val intake = SharedContentIntakeParser.parse(
+            intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, Uri.parse("content://x/archive.zip"))
+            },
+            sourceAppLabel = null,
+            nonce = 1L,
+        )
+
+        assertFalse(intake!!.isEmpty)
+        assertNull(SharedContentIntakeParser.parse(Intent(Intent.ACTION_SEND), null, 1L))
+    }
 }

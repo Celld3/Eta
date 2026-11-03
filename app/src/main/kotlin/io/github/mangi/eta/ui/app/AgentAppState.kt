@@ -1203,6 +1203,8 @@ internal class AgentAppState(
         }
         /* 图片在正文之后挂上：多图分享时任一失败只丢那一张，正文仍然留在草稿里。 */
         intake.imageUris.forEach(::attachImage)
+        /* 非图片附件走与手动选文件相同的解析与导入通道，类型不一致时由它自己报错。 */
+        if (intake.fileUris.isNotEmpty()) attachFiles(intake.fileUris)
         return true
     }
 

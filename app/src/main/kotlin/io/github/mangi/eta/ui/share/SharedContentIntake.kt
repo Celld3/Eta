@@ -10,17 +10,19 @@ import android.os.Bundle
 /**
  * 由系统分享菜单或划词菜单送进本体的内容。
  *
- * 只承载用户主动选中的文本与图片：不读剪贴板，也不抓来源应用的窗口内容。
+ * 只承载用户主动选中的文本、图片与其他附件：不读剪贴板，也不抓来源应用的窗口内容。
  * 应用名只用来告诉模型这段话出自哪里，取不到就留空，不做推断。
  */
 data class SharedContentIntake(
     val text: String = "",
     val imageUris: List<String> = emptyList(),
+    /** 非图片附件（文档、压缩包、音视频等）：走文件引用通道，与手动选文件得到同一种引用。 */
+    val fileUris: List<String> = emptyList(),
     val sourceAppLabel: String? = null,
     /** 同一段内容被重复分享时也要重新预填，因此用单调递增的令牌区分两次不同的送达。 */
     val nonce: Long = 0L,
 ) {
-    val isEmpty: Boolean get() = text.isBlank() && imageUris.isEmpty()
+    val isEmpty: Boolean get() = text.isBlank() && imageUris.isEmpty() && fileUris.isEmpty()
 }
 
 /**
@@ -34,11 +36,13 @@ internal object SharedContentIntakeParser {
         intent: Intent?,
         sourceAppLabel: String?,
         nonce: Long,
+        /** 按 URI 查真实 MIME；查不到就退回 Intent 声明的类型，仍然判不出来才当作普通文件。 */
+        mimeTypeOf: (String) -> String? = { null },
     ): SharedContentIntake? {
         val action = intent?.action ?: return null
         val intake = when (action) {
-            Intent.ACTION_SEND -> read(intent, sourceAppLabel, nonce, multiple = false)
-            Intent.ACTION_SEND_MULTIPLE -> read(intent, sourceAppLabel, nonce, multiple = true)
+            Intent.ACTION_SEND -> read(intent, sourceAppLabel, nonce, multiple = false, mimeTypeOf = mimeTypeOf)
+            Intent.ACTION_SEND_MULTIPLE -> read(intent, sourceAppLabel, nonce, multiple = true, mimeTypeOf = mimeTypeOf)
             Intent.ACTION_PROCESS_TEXT -> SharedContentIntake(
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty(),
                 sourceAppLabel = sourceAppLabel,
@@ -50,23 +54,46 @@ internal object SharedContentIntakeParser {
     }
 
     /**
-     * 图片数量不设上限：与手动选图保持同一行为，多收的图由用户在输入框自行删除。
-     * 真要防爆已有单张 12MB 的编码上限与预览图，不再按张数拍一个说不清的数字。
+     * 分享进来的附件按 MIME 分流：图片继续走图片通道（有预览、走图像解码上限），
+     * 其余一律走文件引用通道，与手动选文件得到同一种引用，不再只认图片。
      */
     private fun read(
         intent: Intent,
         sourceAppLabel: String?,
         nonce: Long,
         multiple: Boolean,
-    ): SharedContentIntake = SharedContentIntake(
-        text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty(),
-        imageUris = readImages(intent, multiple),
-        sourceAppLabel = sourceAppLabel,
-        nonce = nonce,
-    )
+        mimeTypeOf: (String) -> String?,
+    ): SharedContentIntake {
+        val streams = readStreams(intent, multiple)
+        val images = ArrayList<String>()
+        val files = ArrayList<String>()
+        for (uri in streams) {
+            if (isImage(uri, intent.type, mimeTypeOf)) images += uri else files += uri
+        }
+        return SharedContentIntake(
+            text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty(),
+            imageUris = images,
+            fileUris = files.take(MAX_SHARED_FILES),
+            sourceAppLabel = sourceAppLabel,
+            nonce = nonce,
+        )
+    }
+
+    /**
+     * 判不出来时按普通文件处理。
+     *
+     * 反过来错判成图片的代价更大：图片通道要求能解码，非图片会让 `attachImage` 弹一次读取失败。
+     * 而文件通道对图片同样成立，最多是没有缩略图。
+     */
+    private fun isImage(uri: String, declaredType: String?, mimeTypeOf: (String) -> String?): Boolean {
+        val resolved = mimeTypeOf(uri)?.takeIf { it.isNotBlank() }
+        val mime = resolved ?: declaredType?.takeIf { it.isNotBlank() }
+        if (mime == null || mime == "*/*") return false
+        return mime.startsWith("image/")
+    }
 
     /** 只接受 content 与 file 方案：其余方案没有可读授权，收下来也只会在发送时失败。 */
-    private fun readImages(intent: Intent, multiple: Boolean): List<String> = runCatching {
+    private fun readStreams(intent: Intent, multiple: Boolean): List<String> = runCatching {
         val uris = if (multiple) {
             intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 ?.filterNotNull()
@@ -150,6 +177,14 @@ internal fun SharedContentIntake.composeDraft(
 
 /** 单次预填的正文上限：再长多半是整篇文章，塞进输入框只会让编辑变难。 */
 internal const val MAX_DRAFT_SOURCE_CHARS = 8_000
+
+/**
+ * 单次分享的文件数量上限。
+ *
+ * 文件会逐个复制进工作区（单个已由导入通道限制在 32MB），不加限制时一次误分享整个相册
+ * 就能把磁盘和内存一起打满；超出部分直接丢弃，不排队等待。
+ */
+internal const val MAX_SHARED_FILES = 10
 
 /**
  * 决定本次启动的预填草稿从哪里来。

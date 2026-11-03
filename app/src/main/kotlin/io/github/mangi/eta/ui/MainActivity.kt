@@ -2,6 +2,7 @@ package io.github.mangi.eta.ui
 
 import android.app.UiModeManager
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
@@ -158,16 +159,28 @@ class MainActivity : ComponentActivity() {
                 referrerPackage = intent?.resolveSharedReferrer(),
             ),
             nonce = SystemClock.elapsedRealtimeNanos(),
+            mimeTypeOf = ::sharedMimeTypeOf,
         )
+
+    /** 用 ContentResolver 查真实 MIME；取不到返回 null，由解析端退回 Intent 声明类型。 */
+    private fun sharedMimeTypeOf(uri: String): String? = runCatching {
+        contentResolver.getType(Uri.parse(uri))
+    }.getOrNull()
 
     private fun restoreSharedIntake(savedInstanceState: Bundle): SharedContentIntake? {
         val saved = savedInstanceState.getBundle(STATE_SHARED_INTAKE) ?: return null
         val text = saved.getString("text").orEmpty()
         val images = saved.getStringArrayList("images").orEmpty()
+        val files = saved.getStringArrayList("files").orEmpty()
         val source = saved.getString("source")
         val nonce = saved.getLong("nonce")
-        return SharedContentIntake(text = text, imageUris = images, sourceAppLabel = source, nonce = nonce)
-            .takeUnless { it.isEmpty }
+        return SharedContentIntake(
+            text = text,
+            imageUris = images,
+            fileUris = files,
+            sourceAppLabel = source,
+            nonce = nonce,
+        ).takeUnless { it.isEmpty }
     }
 
     private fun Intent.resolveSharedReferrer(): String? =
@@ -188,6 +201,7 @@ class MainActivity : ComponentActivity() {
             outState.putBundle(STATE_SHARED_INTAKE, Bundle().apply {
                 putString("text", intake.text)
                 putStringArrayList("images", ArrayList(intake.imageUris))
+                putStringArrayList("files", ArrayList(intake.fileUris))
                 putString("source", intake.sourceAppLabel)
                 putLong("nonce", intake.nonce)
             })

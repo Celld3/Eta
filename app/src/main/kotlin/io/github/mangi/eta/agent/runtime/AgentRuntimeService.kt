@@ -1708,15 +1708,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             while (true) {
                 // 运行被停止时立刻收回卡片；结论与用户主动取消一致，都是「没有拿到选择」。
                 if (isCancelled()) return AgentChoiceResult.Cancelled
-                val pausedFor = pausedTotal()
-                if (pausedFor != null) {
-                    // 暂停期间不计时，但仍按轮询间隔醒来，以便及时响应停止。
+                if (isPaused()) {
+                    /* 暂停期间不计时，但仍按轮询间隔醒来，以便及时响应停止。
+                       这里不提前结算：剩余时长在恢复那一刻由看门狗重新排定。 */
                     if (latch.await(CancelPollMs, TimeUnit.MILLISECONDS)) {
                         return settled.get() ?: AgentChoiceResult.Cancelled
                     }
                     continue
                 }
-                val remaining = deadline + pausedFor - SystemClock.uptimeMillis()
+                // 兜底截止时间同样要把暂停过的时长还回去，否则切走久了回来照样被判超时。
+                val remaining = deadline + pausedMillisTotal() - SystemClock.uptimeMillis()
                 if (remaining <= 0) return null
                 if (latch.await(minOf(remaining, CancelPollMs), TimeUnit.MILLISECONDS)) {
                     return settled.get() ?: AgentChoiceResult.Cancelled
@@ -1724,9 +1725,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             }
         }
 
-        /** 已暂停时返回累计暂停毫秒（含进行中的这一段），未暂停返回 null。 */
-        private fun pausedTotal(): Long? = synchronized(pauseLock) {
-            if (paused) pausedTotalMs + (SystemClock.uptimeMillis() - pauseStartedAt) else null
+        private fun isPaused(): Boolean = synchronized(pauseLock) { paused }
+
+        /** 累计暂停毫秒数；正在暂停中的那一段也计入。 */
+        private fun pausedMillisTotal(): Long = synchronized(pauseLock) {
+            if (paused) pausedTotalMs + (SystemClock.uptimeMillis() - pauseStartedAt).coerceAtLeast(0L)
+            else pausedTotalMs
         }
 
         fun startTimeout() {

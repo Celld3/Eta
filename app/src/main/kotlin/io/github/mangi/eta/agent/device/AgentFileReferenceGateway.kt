@@ -188,7 +188,9 @@ internal class AgentFileReferenceGateway(
         const val SHARED_STORAGE_ROOT = "/storage/emulated/0"
 
         private const val MEDIA_DOCUMENTS_AUTHORITY = "com.android.providers.media.documents"
-        internal const val MAX_IMPORT_BYTES = 32L * 1024 * 1024
+
+        /** 流式复制的块大小；与原先 BoundedFileCopy 一致，避免影响既有吞吐表现。 */
+        private const val COPY_BUFFER_BYTES = 8 * 1024
 
         internal fun importDocumentUri(context: Context, uri: Uri): Resolution {
             val workspace = TerminalPrivateStorage.workspace(context.filesDir)
@@ -201,9 +203,10 @@ internal class AgentFileReferenceGateway(
                 val importedFile = File(importDirectory, displayName)
                 val input = context.contentResolver.openInputStream(uri)
                     ?: return Resolution.Failure(Error.ImportFailed)
+                /* 不设大小上限：这里只做流式复制，磁盘占用由用户自行管理。 */
                 input.use { source ->
                     importedFile.outputStream().use { destination ->
-                        BoundedFileCopy.copy(source, destination, MAX_IMPORT_BYTES)
+                        source.copyTo(destination, COPY_BUFFER_BYTES)
                     }
                 }
                 completed = true
@@ -214,8 +217,6 @@ internal class AgentFileReferenceGateway(
                         kind = AgentFileReferenceKind.File,
                     ),
                 )
-            } catch (_: BoundedFileCopy.TooLargeException) {
-                Resolution.Failure(Error.ImportTooLarge)
             } catch (_: SecurityException) {
                 Resolution.Failure(Error.AccessDenied)
             } catch (_: IOException) {

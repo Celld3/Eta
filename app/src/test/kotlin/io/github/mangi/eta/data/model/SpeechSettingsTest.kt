@@ -13,7 +13,7 @@ class SpeechSettingsTest {
         coerceInputValues = true
     }
 
-    @Test fun legacySystemRecognitionMigratesToDefaultOnlineProviderAndPreservesOtherSettings() {
+    @Test fun systemRecognitionStaysSelectedAndOtherSettingsArePreserved() {
         val config = json.decodeFromString<SpeechSettings>("{}")
         assertEquals(AsrProvider.QWEN_REALTIME, config.asr)
         assertEquals(TtsProvider.NONE, config.tts)
@@ -22,13 +22,25 @@ class SpeechSettingsTest {
         assertThrows(SpeechFailure::class.java) {
             validateSpeechSettings(config, SpeechCredentials(), synthesis = false)
         }
-        val legacy = json.decodeFromString<SpeechSettings>(
+        val system = json.decodeFromString<SpeechSettings>(
             """{"asr":"SYSTEM","tts":"DOUBAO","autoSpeak":true,"refineTranscript":true}""",
         )
-        assertEquals(AsrProvider.QWEN_REALTIME, legacy.asr)
-        assertEquals(TtsProvider.DOUBAO, legacy.tts)
-        assertTrue(legacy.autoSpeak)
-        assertTrue(legacy.refineTranscript)
+        assertEquals(AsrProvider.SYSTEM, system.asr)
+        assertEquals(TtsProvider.DOUBAO, system.tts)
+        assertTrue(system.autoSpeak)
+        assertTrue(system.refineTranscript)
+    }
+
+    @Test fun systemProvidersRequireNoCloudCredentials() {
+        validateSpeechSettings(SpeechSettings(asr = AsrProvider.SYSTEM), SpeechCredentials(), synthesis = false)
+        validateSpeechSettings(SpeechSettings(tts = TtsProvider.SYSTEM), SpeechCredentials(), synthesis = true)
+        assertThrows(SpeechFailure::class.java) {
+            validateSpeechSettings(
+                SpeechSettings(tts = TtsProvider.SYSTEM, systemRate = 3f),
+                SpeechCredentials(),
+                synthesis = true,
+            )
+        }
     }
 
     @Test fun switchingServicesPreservesIndependentConfigurations() {

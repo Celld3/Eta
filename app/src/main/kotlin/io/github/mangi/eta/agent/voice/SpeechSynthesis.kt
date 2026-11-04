@@ -16,6 +16,7 @@ internal suspend fun synthesizeSpeech(settings: SpeechSettings, credentials: Spe
         TtsProvider.GEMINI -> return@withTimeout synthesizeGemini(settings.geminiTts, credentials.geminiTts, text, onAudio)
         TtsProvider.MINIMAX -> return@withTimeout synthesizeMiniMax(settings.minimaxTts, credentials.minimaxTts, text, onAudio)
         TtsProvider.NONE -> throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "请先选择语音播报服务")
+        TtsProvider.SYSTEM -> throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "系统语音不走 HTTP 合成")
         TtsProvider.QWEN, TtsProvider.DOUBAO -> Unit
     }
     val qwen = settings.tts == TtsProvider.QWEN

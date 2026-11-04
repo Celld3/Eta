@@ -1478,4 +1478,9 @@
     <string name="data_backup_auto_delete_confirm_title">删除这份备份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只删除应用内的这个文件，删除后无法撤销。</string>
     <string name="chat_shared_content_source">来自 %1$s</string>
+  <string name="speech_asr_system">系统语音识别</string>
+  <string name="speech_asr_note_system">用设备自带识别引擎，不联网、不填 Key</string>
+  <string name="speech_tts_system">系统语音</string>
+  <string name="speech_system_voice_note">用设备自带语音引擎，音色 ID 由引擎提供，留空使用默认</string>
+  <string name="speech_pitch">音调</string>
 </resources>

@@ -26,6 +26,7 @@ internal fun SpeechVoiceSection(store: SpeechSettingsStore) {
         TtsProvider.DOUBAO -> settings.doubaoVoice
         TtsProvider.GEMINI -> settings.geminiTts.voice
         TtsProvider.MINIMAX -> settings.minimaxTts.voice
+        TtsProvider.SYSTEM -> settings.systemVoice
     }
     val presets = SpeechVoicePresets.forProvider(settings.tts)
     val presetIndex = presets.indexOfFirst { it.id == voice }
@@ -38,6 +39,7 @@ internal fun SpeechVoiceSection(store: SpeechSettingsStore) {
             TtsProvider.DOUBAO -> settings.copy(doubaoVoice = it)
             TtsProvider.GEMINI -> settings.copy(geminiTts = settings.geminiTts.copy(voice = it))
             TtsProvider.MINIMAX -> settings.copy(minimaxTts = settings.minimaxTts.copy(voice = it))
+            TtsProvider.SYSTEM -> settings.copy(systemVoice = it)
         })
     }
 
@@ -78,6 +80,7 @@ internal fun SpeechVoiceSection(store: SpeechSettingsStore) {
                     TtsProvider.DOUBAO -> R.string.speech_doubao_voice_note
                     TtsProvider.GEMINI -> R.string.speech_gemini_voice_note
                     TtsProvider.MINIMAX -> R.string.speech_minimax_voice_note
+                    TtsProvider.SYSTEM -> R.string.speech_system_voice_note
                     TtsProvider.NONE -> error("No synthesis provider")
                 },
             ),

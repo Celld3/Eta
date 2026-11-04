@@ -59,8 +59,17 @@ internal fun validateSpeechSettings(settings: SpeechSettings, secrets: SpeechCre
                     throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "MiniMax 语速须在 0.5～2 倍之间")
                 }
             }
+            TtsProvider.SYSTEM -> {
+                if (settings.systemRate !in 0.5f..2f) {
+                    throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "系统语音语速须在 0.5～2 倍之间")
+                }
+                if (settings.systemPitch !in 0.5f..2f) {
+                    throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "系统语音音调须在 0.5～2 倍之间")
+                }
+            }
         }
     } else when (settings.asr) {
+        AsrProvider.SYSTEM -> Unit
         AsrProvider.DOUBAO -> {
             required(secrets.doubaoAsr, "豆包识别凭据")
             speechBaseUrl(settings.doubaoAsr.baseUrl)

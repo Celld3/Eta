@@ -3,10 +3,10 @@ package io.github.mangi.eta.data.model
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class AsrProvider { QWEN_REALTIME, QWEN_FLASH, QWEN_FILE, DOUBAO }
+enum class AsrProvider { QWEN_REALTIME, QWEN_FLASH, QWEN_FILE, DOUBAO, SYSTEM }
 
 @Serializable
-enum class TtsProvider { NONE, QWEN, DOUBAO, GEMINI, MINIMAX }
+enum class TtsProvider { NONE, QWEN, DOUBAO, GEMINI, MINIMAX, SYSTEM }
 
 @Serializable
 enum class SpeechRegion { BEIJING, SINGAPORE }
@@ -89,6 +89,12 @@ data class SpeechSettings(
     val refineTranscript: Boolean = false,
     /** 只控制 Eta 自身的语音输入，关闭时保留服务配置以便再次开启。 */
     val recognitionEnabled: Boolean = true,
+    /** 系统播报音色 ID，留空使用引擎默认。 */
+    val systemVoice: String = "",
+    /** 系统播报语速，0.5～2。 */
+    val systemRate: Float = 1f,
+    /** 系统播报音调，0.5～2。 */
+    val systemPitch: Float = 1f,
 ) {
     companion object {
         const val DEFAULT_AUTO_SEND_SILENCE_MS = 2_000

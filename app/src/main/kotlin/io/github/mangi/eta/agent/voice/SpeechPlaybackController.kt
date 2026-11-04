@@ -4,6 +4,7 @@ import android.content.Context
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.model.SpeechCredentials
 import io.github.mangi.eta.data.model.SpeechSettings
+import io.github.mangi.eta.data.model.TtsProvider
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import java.io.Closeable
 import kotlinx.coroutines.CancellationException
@@ -55,6 +56,15 @@ internal class SpeechPlaybackController(
                 val readable = withContext(Dispatchers.Default) { SpeechText.readable(text) }
                 if (readable.isBlank()) throw SpeechFailure(SpeechErrorCode.NO_SPEECH, "这条消息没有可朗读的正文")
                 if (readable.length > 30_000) throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "正文过长，请选择较短的回答朗读")
+                if (config.tts == TtsProvider.SYSTEM) {
+                    SystemSpeechEngine.speak(context, config, SpeechText.chunks(readable)) {
+                        scope.launch(Dispatchers.Main.immediate) {
+                            if (session == generation) mutableState.value = SpeechPlaybackState(messageId)
+                        }
+                    }
+                    if (session == generation) stop()
+                    return@launch
+                }
                 lease?.requestPlaybackFocus { beforePlayback(); playbackActive = true }
                 val player = createOutput()
                 output = player
@@ -151,6 +161,7 @@ internal class SpeechPlaybackController(
 
     fun stop() {
         generation++
+        SystemSpeechEngine.stop()
         output?.close(); output = null
         job?.cancel(); job = null
         lease?.close(); lease = null

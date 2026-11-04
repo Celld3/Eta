@@ -14,7 +14,7 @@ import org.json.JSONObject
 
 internal fun supportsSpeechSession(provider: TtsProvider): Boolean = when (provider) {
     TtsProvider.QWEN, TtsProvider.DOUBAO -> true
-    TtsProvider.NONE, TtsProvider.GEMINI, TtsProvider.MINIMAX -> false
+    TtsProvider.NONE, TtsProvider.GEMINI, TtsProvider.MINIMAX, TtsProvider.SYSTEM -> false
 }
 
 /**
@@ -34,6 +34,8 @@ internal suspend fun streamSpeech(
         TtsProvider.NONE -> throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "请先选择语音播报服务")
         TtsProvider.GEMINI, TtsProvider.MINIMAX ->
             throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "当前语音服务使用逐段流式合成")
+        TtsProvider.SYSTEM ->
+            throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "系统语音不支持流式会话")
     }
 }
 

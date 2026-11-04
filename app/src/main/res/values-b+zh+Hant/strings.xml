@@ -1409,4 +1409,9 @@
     <string name="data_backup_auto_delete_confirm_title">刪除這份備份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只刪除應用程式內的這個檔案，刪除後無法復原。</string>
     <string name="chat_shared_content_source">來自 %1$s</string>
+  <string name="speech_asr_system">系統語音辨識</string>
+  <string name="speech_asr_note_system">用裝置內建辨識引擎，不連網、不填 Key</string>
+  <string name="speech_tts_system">系統語音</string>
+  <string name="speech_system_voice_note">用裝置內建語音引擎，音色 ID 由引擎提供，留空使用預設</string>
+  <string name="speech_pitch">音調</string>
 </resources>

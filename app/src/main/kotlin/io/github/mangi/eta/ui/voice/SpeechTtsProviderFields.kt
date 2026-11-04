@@ -120,6 +120,26 @@ internal fun SpeechDeliveryFields(store: SpeechSettingsStore) {
                 },
             )
         }
+        TtsProvider.SYSTEM -> {
+            val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+            EtaPreferenceDivider(hasLeading = false)
+            EtaOverlayDropdownPreference(
+                title = stringResource(R.string.speech_speed),
+                items = speeds.map { "$it×" },
+                selectedIndex = speeds.indexOf(store.settings.systemRate),
+                onSelectedIndexChange = { index ->
+                    speeds.getOrNull(index)?.let { store.edit(store.settings.copy(systemRate = it)) }
+                },
+            )
+            EtaOverlayDropdownPreference(
+                title = stringResource(R.string.speech_pitch),
+                items = speeds.map { "$it×" },
+                selectedIndex = speeds.indexOf(store.settings.systemPitch),
+                onSelectedIndexChange = { index ->
+                    speeds.getOrNull(index)?.let { store.edit(store.settings.copy(systemPitch = it)) }
+                },
+            )
+        }
         TtsProvider.NONE, TtsProvider.QWEN, TtsProvider.DOUBAO -> Unit
     }
 }

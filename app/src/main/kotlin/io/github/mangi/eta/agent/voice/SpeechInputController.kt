@@ -1,6 +1,9 @@
 package io.github.mangi.eta.agent.voice
 
 import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.model.AsrProvider
 import io.github.mangi.eta.data.model.SpeechCredentials
@@ -15,7 +18,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 internal data class SpeechInputState(
     val phase: EtaSpeechPhase = EtaSpeechPhase.IDLE,
@@ -53,6 +59,7 @@ internal class SpeechInputController(
     private var finishRequested = false
     private var job: Job? = null
     private var recorder: SpeechAudioCapture? = null
+    private var recognizer: SpeechRecognizer? = null
     private var lease: SpeechAudioLease? = null
     private var capturing = false
 
@@ -68,9 +75,19 @@ internal class SpeechInputController(
             try {
                 val config = settings ?: SpeechSettingsRepository.settings()
                 if (!config.recognitionEnabled) return@launch
-                lease = SpeechAudioLease(context) { cancel() }.also { it.acquire(playback = false) }
                 val secrets = credentials ?: SpeechSettingsRepository.credentials(context)
                 validateSpeechSettings(config, secrets, synthesis = false)
+                if (config.asr == AsrProvider.SYSTEM) {
+                    val systemText = recognizeWithSystem(config, session)
+                    if (systemText.isBlank()) throw SpeechFailure(SpeechErrorCode.NO_SPEECH, "没有识别到语音，请重试")
+                    val systemFinal = refined(session, config.refineTranscript, systemText)
+                    if (generation == session) {
+                        cancel()
+                        onResult(systemFinal)
+                    }
+                    return@launch
+                }
+                lease = SpeechAudioLease(context) { cancel() }.also { it.acquire(playback = false) }
                 val endpointSilenceMs = if (automaticEndpoint && !holdToTalk) config.autoSendSilenceMs else 0
                 val audio = createRecorder()
                 recorder = audio
@@ -147,6 +164,49 @@ internal class SpeechInputController(
         }
     }
 
+    /**
+     * 系统识别服务自己录音，不占用 [SpeechRecorder] 与音频租约；回调直接写入状态，
+     * 代际号不匹配说明会话已被取消，丢弃迟到的回调。
+     */
+    private suspend fun recognizeWithSystem(config: SpeechSettings, session: Long): String {
+        val system = SystemSpeechRecognizer.create(context)
+            ?: throw SpeechFailure(
+                SpeechErrorCode.CONFIGURATION,
+                "未找到系统语音识别服务，请安装 Google 语音服务或改用输入法语音",
+            )
+        recognizer = system
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            if (config.language.isNotBlank()) putExtra(RecognizerIntent.EXTRA_LANGUAGE, config.language)
+        }
+        fun update(transform: (SpeechInputState) -> SpeechInputState) {
+            if (generation == session) mutableState.value = transform(mutableState.value)
+        }
+        try {
+            return withTimeout(65_000) {
+                suspendCancellableCoroutine { cont ->
+                    system.setRecognitionListener(SystemRecognitionListener(
+                        onReady = { update { it.copy(phase = EtaSpeechPhase.LISTENING, progress = "正在聆听，点击完成结束") } },
+                        onEndOfSpeech = { update { it.copy(phase = EtaSpeechPhase.RECOGNIZING, level = 0f, progress = "正在识别") } },
+                        onLevel = { level -> update { it.copy(level = (level / 10f).coerceIn(0f, 1f)) } },
+                        onPartial = { preview -> update { it.copy(preview = preview) } },
+                        onDone = { result -> if (cont.isActive) cont.resume(result) },
+                        onError = { code -> if (cont.isActive) cont.resumeWithException(systemRecognitionFailure(code)) },
+                    ))
+                    cont.invokeOnCancellation { runCatching { system.cancel() } }
+                    runCatching { system.startListening(intent) }
+                        .onFailure { error -> if (cont.isActive) cont.resumeWithException(error) }
+                }
+            }
+        } finally {
+            runCatching { system.setRecognitionListener(null) }
+            runCatching { system.destroy() }
+            if (recognizer === system) recognizer = null
+        }
+    }
+
     /** 纠错失败不影响交付；只有纠错仍属于当前会话时才展示进度。 */
     private suspend fun refined(session: Long, refineTranscript: Boolean, text: String): String {
         if (!refineTranscript || generation != session) return text
@@ -167,6 +227,7 @@ internal class SpeechInputController(
         if (!mutableState.value.active || finishRequested) return
         finishRequested = true
         if (mutableState.value.phase == EtaSpeechPhase.STARTING) { cancel(); return }
+        recognizer?.stopListening()
         recorder?.finish()
         mutableState.value = mutableState.value.copy(phase = EtaSpeechPhase.RECOGNIZING, progress = "正在识别", level = 0f)
     }
@@ -175,6 +236,7 @@ internal class SpeechInputController(
         generation++
         finishRequested = false
         recorder?.cancel(); recorder = null
+        recognizer?.cancel(); recognizer?.destroy(); recognizer = null
         releaseCapture()
         job?.cancel(); job = null
         lease?.close(); lease = null

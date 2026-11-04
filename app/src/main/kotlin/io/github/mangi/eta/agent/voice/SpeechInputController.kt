@@ -188,12 +188,12 @@ internal class SpeechInputController(
             return withTimeout(65_000) {
                 suspendCancellableCoroutine { cont ->
                     system.setRecognitionListener(SystemRecognitionListener(
-                        onReady = { update { it.copy(phase = EtaSpeechPhase.LISTENING, progress = "正在聆听，点击完成结束") } },
-                        onEndOfSpeech = { update { it.copy(phase = EtaSpeechPhase.RECOGNIZING, level = 0f, progress = "正在识别") } },
-                        onLevel = { level -> update { it.copy(level = (level / 10f).coerceIn(0f, 1f)) } },
-                        onPartial = { preview -> update { it.copy(preview = preview) } },
-                        onDone = { result -> if (cont.isActive) cont.resume(result) },
-                        onError = { code -> if (cont.isActive) cont.resumeWithException(systemRecognitionFailure(code)) },
+                        readyCallback = { update { it.copy(phase = EtaSpeechPhase.LISTENING, progress = "正在聆听，点击完成结束") } },
+                        endOfSpeechCallback = { update { it.copy(phase = EtaSpeechPhase.RECOGNIZING, level = 0f, progress = "正在识别") } },
+                        levelCallback = { level -> update { it.copy(level = (level / 10f).coerceIn(0f, 1f)) } },
+                        partialCallback = { preview -> update { it.copy(preview = preview) } },
+                        doneCallback = { result -> if (cont.isActive) cont.resume(result) },
+                        errorCallback = { code -> if (cont.isActive) cont.resumeWithException(systemRecognitionFailure(code)) },
                     ))
                     cont.invokeOnCancellation { runCatching { system.cancel() } }
                     runCatching { system.startListening(intent) }

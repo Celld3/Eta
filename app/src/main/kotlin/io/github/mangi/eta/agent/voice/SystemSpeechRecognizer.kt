@@ -66,21 +66,21 @@ internal object SystemSpeechRecognizer {
 
 /** 系统识别回调到控制器状态与协程的桥接。 */
 internal class SystemRecognitionListener(
-    private val onReady: () -> Unit,
-    private val onEndOfSpeech: () -> Unit,
-    private val onLevel: (Float) -> Unit,
-    private val onPartial: (String) -> Unit,
-    private val onDone: (String) -> Unit,
-    private val onError: (Int) -> Unit,
+    private val readyCallback: () -> Unit,
+    private val endOfSpeechCallback: () -> Unit,
+    private val levelCallback: (Float) -> Unit,
+    private val partialCallback: (String) -> Unit,
+    private val doneCallback: (String) -> Unit,
+    private val errorCallback: (Int) -> Unit,
 ) : android.speech.RecognitionListener {
-    override fun onReadyForSpeech(params: android.os.Bundle?) = onReady()
+    override fun onReadyForSpeech(params: android.os.Bundle?) = readyCallback()
     override fun onBeginningOfSpeech() = Unit
-    override fun onRmsChanged(rmsdB: Float) = onLevel(rmsdB)
+    override fun onRmsChanged(rmsdB: Float) = levelCallback(rmsdB)
     override fun onBufferReceived(buffer: ByteArray?) = Unit
-    override fun onEndOfSpeech() = onEndOfSpeech()
-    override fun onError(error: Int) = onError(error)
-    override fun onResults(results: android.os.Bundle?) = onDone(firstResult(results))
-    override fun onPartialResults(partialResults: android.os.Bundle?) = onPartial(firstResult(partialResults))
+    override fun onEndOfSpeech() = endOfSpeechCallback()
+    override fun onError(error: Int) = errorCallback(error)
+    override fun onResults(results: android.os.Bundle?) = doneCallback(firstResult(results))
+    override fun onPartialResults(partialResults: android.os.Bundle?) = partialCallback(firstResult(partialResults))
     override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
 
     private fun firstResult(bundle: android.os.Bundle?): String =

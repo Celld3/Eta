@@ -1478,4 +1478,6 @@
     <string name="data_backup_auto_delete_confirm_title">删除这份备份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只删除应用内的这个文件，删除后无法撤销。</string>
     <string name="chat_shared_content_source">来自 %1$s</string>
+  <string name="speech_asr_sherpa">本地语音识别</string>
+  <string name="speech_asr_note_sherpa">使用安装包内置模型，完全离线，不填 Key、不联网</string>
 </resources>

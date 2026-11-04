@@ -100,7 +100,12 @@ internal class SpeechInputController(
                         Unit
                     }
                     try {
-                        if (config.asr == AsrProvider.QWEN_REALTIME || config.asr == AsrProvider.DOUBAO) {
+                        if (config.asr == AsrProvider.SHERPA) {
+                            begin()
+                            recognizeSpeechLocal(context, audio.frames, {}, { preview ->
+                                update { it.copy(preview = preview) }
+                            }, { audio.finish() })
+                        } else if (config.asr == AsrProvider.QWEN_REALTIME || config.asr == AsrProvider.DOUBAO) {
                             recognizeStream(
                                 config,
                                 secrets,

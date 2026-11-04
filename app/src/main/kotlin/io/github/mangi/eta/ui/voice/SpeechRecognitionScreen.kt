@@ -89,7 +89,7 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
             item(key = "connection") {
                 SpeechConnectionSection(store, synthesis = false)
             }
-            if (settings.asr != AsrProvider.DOUBAO) {
+            if (settings.asr != AsrProvider.DOUBAO && settings.asr != AsrProvider.SHERPA) {
                 item(key = "language") {
                     EtaPreferenceGroup {
                         SpeechFieldColumn {
@@ -142,8 +142,7 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
 @Composable
 private fun SpeechResultSection(store: SpeechSettingsStore) {
     val settings = store.settings
-    val streaming = settings.asr != AsrProvider.QWEN_FLASH && settings.asr != AsrProvider.QWEN_FILE &&
-        settings.asr != AsrProvider.SHERPA
+    val streaming = settings.asr != AsrProvider.QWEN_FLASH && settings.asr != AsrProvider.QWEN_FILE
     val options = SpeechSettings.AUTO_SEND_SILENCE_OPTIONS
     Column {
         EtaPreferenceGroup {

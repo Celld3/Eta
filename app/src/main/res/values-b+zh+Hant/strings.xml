@@ -1409,4 +1409,6 @@
     <string name="data_backup_auto_delete_confirm_title">刪除這份備份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只刪除應用程式內的這個檔案，刪除後無法復原。</string>
     <string name="chat_shared_content_source">來自 %1$s</string>
+  <string name="speech_asr_sherpa">本機語音辨識</string>
+  <string name="speech_asr_note_sherpa">使用安裝包內建模型，完全離線，不填 Key、不連網</string>
 </resources>

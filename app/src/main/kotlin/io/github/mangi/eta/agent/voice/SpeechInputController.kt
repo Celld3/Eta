@@ -68,6 +68,9 @@ internal class SpeechInputController(
             try {
                 val config = settings ?: SpeechSettingsRepository.settings()
                 if (!config.recognitionEnabled) return@launch
+                if (config.asr == AsrProvider.SHERPA) {
+                    mutableState.value = mutableState.value.copy(progress = "正在准备本地模型")
+                }
                 lease = SpeechAudioLease(context) { cancel() }.also { it.acquire(playback = false) }
                 val secrets = credentials ?: SpeechSettingsRepository.credentials(context)
                 validateSpeechSettings(config, secrets, synthesis = false)
@@ -100,7 +103,17 @@ internal class SpeechInputController(
                         Unit
                     }
                     try {
-                        if (config.asr == AsrProvider.QWEN_REALTIME || config.asr == AsrProvider.DOUBAO) {
+                        if (config.asr == AsrProvider.SHERPA) {
+                            // 模型就绪后才开始录音：首次使用要解压 25MB，提前录音会把 2 秒容量的通道写满。
+                            recognizeSpeechLocal(
+                                context,
+                                audio.frames,
+                                endpointSilenceMs,
+                                begin,
+                                { preview -> update { it.copy(preview = preview) } },
+                                { audio.finish() },
+                            )
+                        } else if (config.asr == AsrProvider.QWEN_REALTIME || config.asr == AsrProvider.DOUBAO) {
                             recognizeStream(
                                 config,
                                 secrets,

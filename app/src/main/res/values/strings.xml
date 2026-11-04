@@ -1497,4 +1497,6 @@
     <string name="data_backup_auto_delete_confirm_title">Delete this backup?</string>
     <string name="data_backup_auto_delete_confirm_summary">This only removes the file from app storage and cannot be undone.</string>
     <string name="chat_shared_content_source">From %1$s</string>
+  <string name="speech_asr_sherpa">Local speech recognition</string>
+  <string name="speech_asr_note_sherpa">Runs fully offline with a bundled model. No API key, no network.</string>
 </resources>

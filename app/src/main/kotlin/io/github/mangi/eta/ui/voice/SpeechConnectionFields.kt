@@ -32,6 +32,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 internal fun SpeechConnectionSection(store: SpeechSettingsStore, synthesis: Boolean) {
     if (!synthesis) {
+        if (store.settings.asr == AsrProvider.SHERPA) return
         QwenDoubaoConnectionSection(store, synthesis = false)
         return
     }
@@ -47,7 +48,9 @@ internal fun SpeechConnectionSection(store: SpeechSettingsStore, synthesis: Bool
 @Composable
 private fun QwenDoubaoConnectionSection(store: SpeechSettingsStore, synthesis: Boolean) {
     val settings = store.settings
-    val qwen = if (synthesis) settings.tts == TtsProvider.QWEN else settings.asr != AsrProvider.DOUBAO
+    val qwen = if (synthesis) settings.tts == TtsProvider.QWEN else
+        settings.asr == AsrProvider.QWEN_REALTIME || settings.asr == AsrProvider.QWEN_FLASH ||
+            settings.asr == AsrProvider.QWEN_FILE
     val keyField = when {
         qwen && synthesis -> SpeechCredentialField.QWEN_TTS
         qwen -> SpeechCredentialField.QWEN_ASR

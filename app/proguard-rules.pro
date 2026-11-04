@@ -70,3 +70,8 @@
 -keep class io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayCommandMain {
     public static void main(java.lang.String[]);
 }
+
+# ── 本地语音识别（sherpa-ncnn）────────────────────────────────────────────
+# JNI 用字段名与 native 方法名做符号查找，混淆后 GetFieldID / 方法注册会失败。
+# 只保留这一组桥接类，其余第三方依赖仍按各自 consumer rules 裁剪。
+-keep class com.k2fsa.sherpa.ncnn.** { *; }

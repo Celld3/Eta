@@ -80,6 +80,7 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
                                 AsrProvider.QWEN_REALTIME, AsrProvider.DOUBAO -> R.string.speech_asr_note_streaming
                                 AsrProvider.QWEN_FLASH -> R.string.speech_asr_note_flash
                                 AsrProvider.QWEN_FILE -> R.string.speech_asr_note_file
+                                AsrProvider.SHERPA -> R.string.speech_asr_note_sherpa
                             },
                         ),
                     )
@@ -88,7 +89,7 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
             item(key = "connection") {
                 SpeechConnectionSection(store, synthesis = false)
             }
-            if (settings.asr != AsrProvider.DOUBAO) {
+            if (settings.asr != AsrProvider.DOUBAO && settings.asr != AsrProvider.SHERPA) {
                 item(key = "language") {
                     EtaPreferenceGroup {
                         SpeechFieldColumn {

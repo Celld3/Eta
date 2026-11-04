@@ -91,6 +91,8 @@ android {
 
     androidResources {
         localeFilters += listOf("en", "b+zh+Hans", "b+zh+Hant")
+        // 本地识别模型随 APK 打包且不压缩，避免首次解压耗时
+        noCompress += "bin"
     }
 
     packaging {

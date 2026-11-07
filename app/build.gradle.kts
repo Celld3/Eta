@@ -47,9 +47,8 @@ android {
             abiFilters += "arm64-v8a"
         }
 
-        // 本地离线识别的开关。框架与下载链路先落地，识别逻辑在后续提交里接入，
-        // 因此默认关闭；打开后设置页才出现「本地识别」这一项。
-        buildConfigField("boolean", "LOCAL_ASR_ENABLED", "false")
+        // 本地离线识别的开关。打开后设置页才出现「本地识别」这一项。
+        buildConfigField("boolean", "LOCAL_ASR_ENABLED", "true")
     }
 
     signingConfigs {

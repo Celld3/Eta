@@ -1225,12 +1225,14 @@
   <string name="speech_asr_qwen_flash">千问 · 短音频识别</string>
   <string name="speech_asr_qwen_file">千问 · 文件转写</string>
   <string name="speech_asr_doubao">豆包 · 流式识别 2.0</string>
+  <string name="speech_asr_local">本地 · 离线识别</string>
   <string name="speech_tts_none">关闭</string>
   <string name="speech_tts_qwen">千问</string>
   <string name="speech_tts_doubao">豆包</string>
   <string name="speech_asr_note_streaming">边说边显示文字。聊天听写点击完成；助手浮窗可在停顿后自动提交。</string>
   <string name="speech_asr_note_flash">录音完成后上传识别，适合短句输入。</string>
   <string name="speech_asr_note_file">录音先上传自有 OSS，再异步转写，等待时间较长。</string>
+  <string name="speech_asr_note_local">在手机上直接识别，边说边出字；不联网、不产生费用。</string>
   <string name="speech_region">地域</string>
   <string name="speech_region_beijing">北京</string>
   <string name="speech_region_singapore">新加坡</string>
@@ -1247,6 +1249,7 @@
   <string name="speech_auto_send_note">仅对助手浮窗生效；按住麦克风说话时，松手才发送。</string>
   <string name="speech_refine_title">智能纠错</string>
   <string name="speech_refine_summary">用当前对话模型修正同音字和中英文术语，会增加少量延迟和费用</string>
+  <string name="speech_refine_summary_local">本地识别不使用纠错：纠错需要联网调用对话模型。</string>
   <string name="voice_release_to_send">松开发送，移出取消</string>
   <string name="speech_legacy_auth">使用旧版鉴权</string>
   <string name="speech_advanced">高级设置</string>
@@ -1478,4 +1481,12 @@
     <string name="data_backup_auto_delete_confirm_title">删除这份备份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只删除应用内的这个文件，删除后无法撤销。</string>
     <string name="chat_shared_content_source">来自 %1$s</string>
+  <string name="speech_local_model_title">模型</string>
+  <string name="speech_local_model_download">下载模型</string>
+  <string name="speech_local_model_ready">模型已就绪</string>
+  <string name="speech_local_model_retry">下载失败，点击重试</string>
+  <string name="speech_local_model_unpacking">正在解压模型…</string>
+  <string name="speech_local_model_size">占用 %1$s</string>
+  <string name="speech_local_model_progress">%1$s / %2$s</string>
+  <string name="speech_local_model_note">只需下载一次，保存在应用私有目录；之后识别完全离线。</string>
 </resources>

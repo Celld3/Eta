@@ -46,6 +46,10 @@ android {
             // 同时过滤本地与依赖 AAR 的原生库，确保 APK 仅包含 ARM64。
             abiFilters += "arm64-v8a"
         }
+
+        // 本地离线识别的开关。框架与下载链路先落地，识别逻辑在后续提交里接入，
+        // 因此默认关闭；打开后设置页才出现「本地识别」这一项。
+        buildConfigField("boolean", "LOCAL_ASR_ENABLED", "false")
     }
 
     signingConfigs {
@@ -100,6 +104,9 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols += setOf("**/libproot_exec.so", "**/libproot_loader.so", "**/libeta_pty.so")
+            // 本地识别的 AAR 只带 arm64-v8a 一份，其余 ABI 已在 app/libs 里裁掉；
+            // 这里再挡一次，避免将来换回完整 AAR 时把另外三份带进 APK。
+            excludes += setOf("lib/armeabi-v7a/**", "lib/x86/**", "lib/x86_64/**")
         }
         resources {
             // 合并 Xposed 模块声明，避免 release 裁剪后模块入口失效
@@ -152,6 +159,9 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.commons.compress)
     implementation(libs.xz)
+    // 本地离线识别：sherpa-onnx 2.0.1，onnxruntime 已静态链接进 libsherpa-onnx-jni.so，
+    // AAR 已裁掉非 arm64 的原生库。模型不打进 APK，按需下载。
+    implementation(files("libs/sherpa-onnx-arm64-2.0.1.aar"))
     compileOnly(libs.libxposed.api)
     // UI 侧 RemotePreferences 写入桥：通过 XposedService 将配置提交到 LSPosed 数据库；
     // Hook 侧用 XposedInterface.getRemotePreferences 读取当前进程持有的配置缓存。

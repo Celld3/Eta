@@ -70,3 +70,11 @@
 -keep class io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayCommandMain {
     public static void main(java.lang.String[]);
 }
+
+# ---- 本地离线识别（sherpa-onnx）----
+# JNI 侧按类名和方法名反查 Java 对象，混淆后 native 就找不到对应符号，
+# 因此这一包整体保留；AAR 自带的类和 Kotlin data class 的 getter 一并保留。
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}

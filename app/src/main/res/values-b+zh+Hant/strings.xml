@@ -1213,12 +1213,14 @@
   <string name="speech_asr_qwen_flash">千問 · 短音訊識別</string>
   <string name="speech_asr_qwen_file">千問 · 檔案轉寫</string>
   <string name="speech_asr_doubao">豆包 · 串流識別 2.0</string>
+  <string name="speech_asr_local">本機 · 離線識別</string>
   <string name="speech_tts_none">關閉</string>
   <string name="speech_tts_qwen">千問</string>
   <string name="speech_tts_doubao">豆包</string>
   <string name="speech_asr_note_streaming">邊說邊顯示文字。聊天聽寫點擊完成；助手浮窗可在停頓後自動提交。</string>
   <string name="speech_asr_note_flash">錄音完成後上傳識別，適合短句輸入。</string>
   <string name="speech_asr_note_file">錄音先上傳自有 OSS，再非同步轉寫，等待時間較長。</string>
+  <string name="speech_asr_note_local">在手機上直接識別，邊說邊出字；不連網、不產生費用。</string>
   <string name="speech_region">地域</string>
   <string name="speech_region_beijing">北京</string>
   <string name="speech_region_singapore">新加坡</string>
@@ -1235,6 +1237,7 @@
   <string name="speech_auto_send_note">僅對助手浮窗生效；按住麥克風說話時，放開才傳送。</string>
   <string name="speech_refine_title">智慧糾錯</string>
   <string name="speech_refine_summary">用目前對話模型修正同音字和中英文術語，會增加少量延遲和費用</string>
+  <string name="speech_refine_summary_local">本機識別不使用糾錯：糾錯需要連網呼叫對話模型。</string>
   <string name="voice_release_to_send">放開傳送，移出取消</string>
   <string name="speech_legacy_auth">使用舊版鑑權</string>
   <string name="speech_advanced">進階設定</string>
@@ -1409,4 +1412,12 @@
     <string name="data_backup_auto_delete_confirm_title">刪除這份備份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只刪除應用程式內的這個檔案，刪除後無法復原。</string>
     <string name="chat_shared_content_source">來自 %1$s</string>
+  <string name="speech_local_model_title">模型</string>
+  <string name="speech_local_model_download">下載模型</string>
+  <string name="speech_local_model_ready">模型已就緒</string>
+  <string name="speech_local_model_retry">下載失敗，點擊重試</string>
+  <string name="speech_local_model_unpacking">正在解壓模型…</string>
+  <string name="speech_local_model_size">佔用 %1$s</string>
+  <string name="speech_local_model_progress">%1$s / %2$s</string>
+  <string name="speech_local_model_note">只需下載一次，保存在應用私有目錄；之後識別完全離線。</string>
 </resources>

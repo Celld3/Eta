@@ -1244,12 +1244,14 @@
   <string name="speech_asr_qwen_flash">Qwen · Short audio</string>
   <string name="speech_asr_qwen_file">Qwen · File transcription</string>
   <string name="speech_asr_doubao">Doubao · Streaming 2.0</string>
+  <string name="speech_asr_local">Local · Offline</string>
   <string name="speech_tts_none">Off</string>
   <string name="speech_tts_qwen">Qwen</string>
   <string name="speech_tts_doubao">Doubao</string>
   <string name="speech_asr_note_streaming">Text appears as you speak. Tap Done to finish dictation in chat; the assistant overlay can submit automatically after a pause.</string>
   <string name="speech_asr_note_flash">Audio is uploaded for recognition after you finish recording; best for short input.</string>
   <string name="speech_asr_note_file">Recordings are uploaded to your own OSS bucket first, then transcribed asynchronously; takes longer.</string>
+  <string name="speech_asr_note_local">Recognized on this device. Text appears as you speak; no network is used and nothing is charged.</string>
   <string name="speech_region">Region</string>
   <string name="speech_region_beijing">Beijing</string>
   <string name="speech_region_singapore">Singapore</string>
@@ -1267,6 +1269,7 @@
   <string name="speech_auto_send_note">Applies to the assistant overlay only. When you hold the microphone, it sends on release.</string>
   <string name="speech_refine_title">Smart correction</string>
   <string name="speech_refine_summary">Uses the current chat model to fix homophones and mixed Chinese–English terms. Adds a little latency and cost.</string>
+  <string name="speech_refine_summary_local">Not available for local recognition: correction calls the chat model online.</string>
   <string name="voice_release_to_send">Release to send, slide away to cancel</string>
   <string name="speech_legacy_auth">Use legacy authentication</string>
   <string name="speech_advanced">Advanced</string>
@@ -1497,4 +1500,12 @@
     <string name="data_backup_auto_delete_confirm_title">Delete this backup?</string>
     <string name="data_backup_auto_delete_confirm_summary">This only removes the file from app storage and cannot be undone.</string>
     <string name="chat_shared_content_source">From %1$s</string>
+  <string name="speech_local_model_title">Model</string>
+  <string name="speech_local_model_download">Download model</string>
+  <string name="speech_local_model_ready">Model ready</string>
+  <string name="speech_local_model_retry">Download failed, tap to retry</string>
+  <string name="speech_local_model_unpacking">Unpacking model…</string>
+  <string name="speech_local_model_size">%1$s on disk</string>
+  <string name="speech_local_model_progress">%1$s / %2$s</string>
+  <string name="speech_local_model_note">Downloaded once and kept in app storage. Recognition then works fully offline.</string>
 </resources>

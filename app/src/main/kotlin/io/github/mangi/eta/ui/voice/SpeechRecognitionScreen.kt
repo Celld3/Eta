@@ -39,6 +39,8 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
     val store = remember { SpeechSettingsStore(context, scope) }
     SpeechLifecycle { store.stop() }
     val settings = store.settings
+    // 本地识别未启用时整条链路不出现，四个云端服务保持原样。
+    val providers = remember { AsrProvider.selectable }
 
     MiuixScaffoldPage(
         title = stringResource(R.string.speech_recognition_title),
@@ -67,10 +69,10 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
                     EtaPreferenceGroup {
                         EtaOverlayDropdownPreference(
                             title = stringResource(R.string.speech_service_and_model),
-                            items = AsrProvider.entries.map { it.label() },
-                            selectedIndex = settings.asr.ordinal,
+                            items = providers.map { it.label() },
+                            selectedIndex = providers.indexOf(settings.asr).coerceAtLeast(0),
                             onSelectedIndexChange = { index ->
-                                AsrProvider.entries.getOrNull(index)?.let { store.edit(settings.copy(asr = it)) }
+                                providers.getOrNull(index)?.let { store.edit(settings.copy(asr = it)) }
                             },
                         )
                     }
@@ -80,15 +82,21 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
                                 AsrProvider.QWEN_REALTIME, AsrProvider.DOUBAO -> R.string.speech_asr_note_streaming
                                 AsrProvider.QWEN_FLASH -> R.string.speech_asr_note_flash
                                 AsrProvider.QWEN_FILE -> R.string.speech_asr_note_file
+                                AsrProvider.LOCAL -> R.string.speech_asr_note_local
                             },
                         ),
                     )
                 }
             }
-            item(key = "connection") {
-                SpeechConnectionSection(store, synthesis = false)
+            if (settings.asr == AsrProvider.LOCAL) {
+                // 本地识别不联网、不需要凭据；这里换成模型下载与管理。
+                item(key = "local_model") { LocalAsrModelSection() }
+            } else {
+                item(key = "connection") {
+                    SpeechConnectionSection(store, synthesis = false)
+                }
             }
-            if (settings.asr != AsrProvider.DOUBAO) {
+            if (settings.asr != AsrProvider.DOUBAO && settings.asr != AsrProvider.LOCAL) {
                 item(key = "language") {
                     EtaPreferenceGroup {
                         SpeechFieldColumn {
@@ -163,10 +171,15 @@ private fun SpeechResultSection(store: SpeechSettingsStore) {
                     },
                 )
             }
+            val local = settings.asr == AsrProvider.LOCAL
             EtaSwitchPreference(
                 title = stringResource(R.string.speech_refine_title),
-                summary = stringResource(R.string.speech_refine_summary),
-                checked = settings.refineTranscript,
+                // 本地识别固定跳过纠错：纠错要联网调对话模型，会抵消离线与零成本。
+                summary = stringResource(
+                    if (local) R.string.speech_refine_summary_local else R.string.speech_refine_summary,
+                ),
+                checked = settings.refineTranscript && !local,
+                enabled = !local,
                 onCheckedChange = { store.edit(settings.copy(refineTranscript = it)) },
             )
         }

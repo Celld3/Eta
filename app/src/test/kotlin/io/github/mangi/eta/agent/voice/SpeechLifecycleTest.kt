@@ -136,7 +136,8 @@ class SpeechLifecycleTest {
         val lease = SpeechAudioLease(RuntimeEnvironment.getApplication()) { interrupted = true }
         try {
             lease.acquire(playback = false)
-            for (provider in AsrProvider.entries) {
+            // 只遍历可选项：本地识别未启用时不该出现在这条链路上。
+            for (provider in AsrProvider.selectable) {
                 controller.start(SpeechSettings(asr = provider, recognitionEnabled = false))
                 shadowOf(Looper.getMainLooper()).idle()
                 assertFalse(controller.state.value.active)

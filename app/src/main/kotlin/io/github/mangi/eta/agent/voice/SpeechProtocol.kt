@@ -61,6 +61,8 @@ internal fun validateSpeechSettings(settings: SpeechSettings, secrets: SpeechCre
             }
         }
     } else when (settings.asr) {
+        // 本地识别不需要任何网络凭据，模型是否就绪由识别链路在启动时单独检查。
+        AsrProvider.LOCAL -> Unit
         AsrProvider.DOUBAO -> {
             required(secrets.doubaoAsr, "豆包识别凭据")
             speechBaseUrl(settings.doubaoAsr.baseUrl)

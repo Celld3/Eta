@@ -2,6 +2,7 @@ package io.github.mangi.eta.ui.components
 
 import io.github.mangi.eta.ui.voice.SpeechDictationButton
 import io.github.mangi.eta.ui.voice.SpeechInputFeedback
+import io.github.mangi.eta.agent.voice.local.LocalRecognizerHolder
 import io.github.mangi.eta.ui.voice.rememberSpeechInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.animation.AnimatedContent
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +90,7 @@ import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentInlineChoicePanel
 import io.github.mangi.eta.agent.overlay.AgentInlineCopyCard
 import io.github.mangi.eta.agent.overlay.CopyCardRequest
+import io.github.mangi.eta.data.model.AsrProvider
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -175,6 +178,13 @@ internal fun AgentChatInputBar(
         }
     }
     LaunchedEffect(isEditingMessage, recognitionEnabled) { dictation.cancel() }
+    // 本地识别加载一次要几秒，进聊天页就提前加载；离开页面后按空闲时长释放。
+    LaunchedEffect(speechSettings?.asr) {
+        if (speechSettings?.asr == AsrProvider.LOCAL) LocalRecognizerHolder.warmUp()
+    }
+    DisposableEffect(Unit) {
+        onDispose { LocalRecognizerHolder.releaseIfIdle() }
+    }
     var wasEditingMessage by remember { mutableStateOf(isEditingMessage) }
     var syncedVersion by remember { mutableIntStateOf(inputSyncVersion) }
     val canSend = textFieldState.text.isNotBlank() ||

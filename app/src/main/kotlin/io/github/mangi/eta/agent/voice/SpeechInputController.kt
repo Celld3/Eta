@@ -100,7 +100,10 @@ internal class SpeechInputController(
                         Unit
                     }
                     try {
-                        if (config.asr == AsrProvider.QWEN_REALTIME || config.asr == AsrProvider.DOUBAO) {
+                        // 本地识别同样走流式通道：边说边出字，结束时由录音器收尾。
+                        if (config.asr == AsrProvider.QWEN_REALTIME || config.asr == AsrProvider.DOUBAO ||
+                            config.asr == AsrProvider.LOCAL
+                        ) {
                             recognizeStream(
                                 config,
                                 secrets,
@@ -123,7 +126,9 @@ internal class SpeechInputController(
                     }
                 }
                 if (text.isBlank()) throw SpeechFailure(SpeechErrorCode.NO_SPEECH, "没有识别到语音，请重试")
-                val final = refined(session, config.refineTranscript, text)
+                // 本地识别跳过纠错：纠错本身要联网调用对话模型，会抵消离线与零成本的意义。
+                val refine = config.refineTranscript && config.asr != AsrProvider.LOCAL
+                val final = refined(session, refine, text)
                 if (generation == session) {
                     cancel()
                     onResult(final)

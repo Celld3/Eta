@@ -1,5 +1,7 @@
 package io.github.mangi.eta.agent.voice
 
+import io.github.mangi.eta.agent.voice.local.LocalRecognizerHolder
+import io.github.mangi.eta.agent.voice.local.LocalSpeechRecognizer
 import io.github.mangi.eta.data.model.AsrProvider
 import io.github.mangi.eta.data.model.SpeechCredentials
 import io.github.mangi.eta.data.model.SpeechSettings
@@ -25,9 +27,26 @@ internal suspend fun recognizeSpeechStream(
     // 不自动结束时沿用服务默认断句，只影响预览分段，不会提前结束录音。
     val automaticEndpoint = endpointSilenceMs > 0
     val sentenceSilenceMs = if (automaticEndpoint) endpointSilenceMs else DEFAULT_SENTENCE_SILENCE_MS
-    if (settings.asr == AsrProvider.DOUBAO) {
-        recognizeDoubao(settings, credentials, frames, onReady, onPreview, onEndpoint, automaticEndpoint, sentenceSilenceMs)
-    } else recognizeQwen(settings, credentials, frames, onReady, onPreview, onEndpoint, automaticEndpoint, sentenceSilenceMs)
+    when (settings.asr) {
+        AsrProvider.DOUBAO -> recognizeDoubao(
+            settings, credentials, frames, onReady, onPreview, onEndpoint, automaticEndpoint, sentenceSilenceMs,
+        )
+        AsrProvider.LOCAL -> try {
+            LocalSpeechRecognizer.recognize(
+                frames = frames,
+                onReady = onReady,
+                onPreview = onPreview,
+                onEndpoint = onEndpoint,
+                automaticEndpoint = automaticEndpoint,
+                endpointSilenceMs = sentenceSilenceMs,
+            )
+        } finally {
+            LocalRecognizerHolder.releaseSession()
+        }
+        else -> recognizeQwen(
+            settings, credentials, frames, onReady, onPreview, onEndpoint, automaticEndpoint, sentenceSilenceMs,
+        )
+    }
 }
 
 private const val DEFAULT_SENTENCE_SILENCE_MS = 800

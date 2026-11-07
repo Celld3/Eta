@@ -91,8 +91,12 @@ internal object Prefs {
     @Volatile
     private var localAgent: SharedPreferences? = null
 
+    @Volatile
+    private var appContext: Context? = null
+
     /** App 进程调用：初始化不依赖 Xposed Service 的 Agent 配置。 */
     fun initLocal(context: Context) {
+        appContext = context.applicationContext
         if (localAgent == null) {
             synchronized(this) {
                 if (localAgent == null) {
@@ -104,6 +108,14 @@ internal object Prefs {
             }
         }
     }
+
+    /**
+     * 与 [initLocal] 同时缓存的 Application Context。
+     *
+     * 语音识别链路（输入栏、助手浮窗、语音交互服务）都拿不到 Compose 或 Activity 的
+     * Context，本地识别需要靠它定位模型目录，因此在这里留一个进程级入口。
+     */
+    fun applicationContext(): Context? = appContext
 
     /** Hook 进程调用：缓存框架提供的只读 SharedPreferences。 */
     fun attachRemote(prefs: SharedPreferences?) {

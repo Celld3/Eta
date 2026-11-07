@@ -53,12 +53,10 @@ internal object LocalSpeechRecognizer {
             val silenceSamples = if (automaticEndpoint) endpointSilenceMs * SAMPLE_RATE / 1000 else 0
             var trailingSilence = 0
             var lastText = ""
-            var ready = false
+            // 模型就绪后再通知调用方开始录音：onReady 才是启动录音的地方，而模型加载要几秒，
+            // 若等第一帧音频才回调，录音永远不会开始，界面会一直停在「正在连接」。
+            onReady()
             for (frame in frames) {
-                if (!ready) {
-                    onReady()
-                    ready = true
-                }
                 val count = frame.size / 2
                 if (count <= 0 || count > FRAME_SAMPLES) continue
                 pcm16ToFloat(frame, count, samples)

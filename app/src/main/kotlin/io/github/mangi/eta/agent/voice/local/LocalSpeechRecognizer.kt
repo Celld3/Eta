@@ -212,8 +212,11 @@ internal object LocalRecognizerHolder {
         val model = LocalAsrModels.active
         return try {
             val started = System.currentTimeMillis()
+            // 模型是 App 私有目录里的绝对路径，必须走 fromFile 构造：给 OnlineRecognizer 传
+            // assetManager 会让 native 侧认为模型要按 assets 路径读取，与绝对路径冲突后
+            // 直接 exit(-1)（进程 status=255，无 Java 异常可捕获）。
             val loaded = OnlineRecognizer(
-                assetManager = context.assets,
+                assetManager = null,
                 config = OnlineRecognizerConfig(
                     featConfig = FeatureConfig(sampleRate = 16_000, featureDim = 80),
                     modelConfig = OnlineModelConfig(

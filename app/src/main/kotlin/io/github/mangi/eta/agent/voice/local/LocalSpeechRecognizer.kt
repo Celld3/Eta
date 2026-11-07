@@ -117,8 +117,8 @@ internal object LocalSpeechRecognizer {
 }
 
 /**
- * 识别器单例。模型只加载一次，多个会话共用；空闲 [IDLE_RELEASE_MS] 后释放，
- * 下次使用重新加载（实测加载约数秒，故在聊天页提前预热）。
+ * 识别器单例。模型只加载一次，多个会话共用；空闲 [IDLE_RELEASE_MS] 后释放。
+ * 只在真正开始识别时按需加载，不在页面组合期预热。
  */
 internal object LocalRecognizerHolder {
     private val recognizer = AtomicReference<OnlineRecognizer?>(null)
@@ -163,11 +163,21 @@ internal object LocalRecognizerHolder {
         }
     }
 
-    /** 预热：模型已就绪时提前加载，避免点麦克风才开始等加载。 */
+    /**
+     * 预热：模型已就绪时在后台线程提前加载，避免点麦克风才开始等加载。
+     *
+     * 加载会把上百 MB 模型读进内存，且底层是 native 调用，必须在工作线程上跑；
+     * 由调用方在合适的时机（例如用户按下麦克风）触发，不在页面组合期自动执行。
+     */
     fun warmUp() {
         if (recognizer.get() != null) return
         if (!modelDirectoryExists()) return
-        runCatching { load()?.let { recognizer.compareAndSet(null, it) } }
+        Thread({
+            synchronized(lock) {
+                if (recognizer.get() != null) return@synchronized
+                runCatching { load()?.let { recognizer.compareAndSet(null, it) } }
+            }
+        }, "local-asr-warmup").apply { isDaemon = true }.start()
     }
 
     /** 空闲释放；会话进行中不释放。 */

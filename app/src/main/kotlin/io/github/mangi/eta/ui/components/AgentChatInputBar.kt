@@ -90,7 +90,6 @@ import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentInlineChoicePanel
 import io.github.mangi.eta.agent.overlay.AgentInlineCopyCard
 import io.github.mangi.eta.agent.overlay.CopyCardRequest
-import io.github.mangi.eta.data.model.AsrProvider
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -178,10 +177,8 @@ internal fun AgentChatInputBar(
         }
     }
     LaunchedEffect(isEditingMessage, recognitionEnabled) { dictation.cancel() }
-    // 本地识别加载一次要几秒，进聊天页就提前加载；离开页面后按空闲时长释放。
-    LaunchedEffect(speechSettings?.asr) {
-        if (speechSettings?.asr == AsrProvider.LOCAL) LocalRecognizerHolder.warmUp()
-    }
+    // 本地识别器只在用户真正按下麦克风时才加载：加载过程要把上百 MB 模型读进内存，
+    // 放在组合期会把主线程连同整个聊天页一起拖住，失败时也没有回退余地。
     DisposableEffect(Unit) {
         onDispose { LocalRecognizerHolder.releaseIfIdle() }
     }

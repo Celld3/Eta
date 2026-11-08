@@ -52,21 +52,21 @@ class LocalSpeechRecognizerTest {
         assertTrue(LocalSpeechRecognizer.isSilent(ByteArray(6400), 3200))
     }
 
-    @Test fun fullScaleSquareWaveIsNotSilent() {
-        assertFalse(LocalSpeechRecognizer.isSilent(squareWave(amplitude = 32767), 3200))
+    @Test fun fullScaleFrameIsNotSilent() {
+        assertFalse(LocalSpeechRecognizer.isSilent(constantWave(amplitude = 32767), 3200))
     }
 
     @Test fun judgementSitsOnTheThreshold() {
-        // 方波峰值等于其 RMS；取阈值两侧各一档，确认判定落在阈值两边。
-        val below = squareWave(amplitude = (LocalSpeechRecognizer.SILENCE_RMS * 0.9).toInt())
-        val above = squareWave(amplitude = (LocalSpeechRecognizer.SILENCE_RMS * 1.1).toInt())
+        // 恒定幅值的帧其 RMS 就等于该幅值；取阈值两侧各一档，确认判定落在阈值两边。
+        val below = constantWave(amplitude = (LocalSpeechRecognizer.SILENCE_RMS * 0.9).toInt())
+        val above = constantWave(amplitude = (LocalSpeechRecognizer.SILENCE_RMS * 1.1).toInt())
         assertTrue(LocalSpeechRecognizer.isSilent(below, below.size / 2))
         assertFalse(LocalSpeechRecognizer.isSilent(above, above.size / 2))
     }
 
     @Test fun quietSpeechAboveThresholdCountsAsSpeech() {
         // 正常说话音量远高于阈值，不能被当成静音，否则端点判定会立刻触发。
-        assertFalse(LocalSpeechRecognizer.isSilent(squareWave(amplitude = 3000), 3200))
+        assertFalse(LocalSpeechRecognizer.isSilent(constantWave(amplitude = 3000), 3200))
     }
 
     // ---- 交给 native 的采样率 ----
@@ -92,19 +92,11 @@ class LocalSpeechRecognizerTest {
         assertTrue("满帧不应额外复制", full === samples)
     }
 
-    /** 16 位小端方波；峰值为 [amplitude]，其 RMS 也等于 [amplitude]。 */
-    private fun squareWave(amplitude: Int): ByteArray {
+    /** 16 位小端恒定幅值帧；每个采样都等于 [amplitude]，因此 RMS 也等于 [amplitude]。 */
+    private fun constantWave(amplitude: Int): ByteArray {
         val clamped = amplitude.coerceIn(0, 32767)
         val low = (clamped and 0xFF).toByte()
         val high = ((clamped shr 8) and 0xFF).toByte()
-        return ByteArray(6400) { index ->
-            val sampleIndex = index / 2
-            val isHigh = sampleIndex % 2 == 0
-            if (index % 2 == 0) {
-                if (isHigh) low else 0x00
-            } else {
-                if (isHigh) high else 0x00
-            }
-        }
+        return ByteArray(6400) { index -> if (index % 2 == 0) low else high }
     }
 }

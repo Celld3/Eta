@@ -46,7 +46,7 @@ class LocalSpeechRecognizerTest {
         assertEquals(-1f, out[3], 1e-6f)
     }
 
-    // ---- isSilent ----
+    // ---- 静音判定 ----
 
     @Test fun allZeroFrameIsSilent() {
         assertTrue(LocalSpeechRecognizer.isSilent(ByteArray(6400), 3200))
@@ -58,8 +58,9 @@ class LocalSpeechRecognizerTest {
 
     @Test fun judgementSitsOnTheThreshold() {
         // 恒定幅值的帧其 RMS 就等于该幅值；取阈值两侧各一档，确认判定落在阈值两边。
-        val below = constantWave(amplitude = (LocalSpeechRecognizer.SILENCE_RMS * 0.9).toInt())
-        val above = constantWave(amplitude = (LocalSpeechRecognizer.SILENCE_RMS * 1.1).toInt())
+        val threshold = LocalSpeechRecognizer.SILENCE_FLOOR_MIN
+        val below = constantWave(amplitude = (threshold * 0.9).toInt())
+        val above = constantWave(amplitude = (threshold * 1.1).toInt())
         assertTrue(LocalSpeechRecognizer.isSilent(below, below.size / 2))
         assertFalse(LocalSpeechRecognizer.isSilent(above, above.size / 2))
     }
@@ -67,6 +68,39 @@ class LocalSpeechRecognizerTest {
     @Test fun quietSpeechAboveThresholdCountsAsSpeech() {
         // 正常说话音量远高于阈值，不能被当成静音，否则端点判定会立刻触发。
         assertFalse(LocalSpeechRecognizer.isSilent(constantWave(amplitude = 3000), 3200))
+    }
+
+    @Test fun silenceDetectorTracksLoudRoom() {
+        // 实测录音（标准录音 4）噪声底约 1620、说话峰值约 9300；固定阈值 800 在这里永远不会触发。
+        val detector = LocalSpeechRecognizer.SilenceDetector()
+        repeat(LocalSpeechRecognizer.SILENCE_PRIME_FRAMES) { detector.accept(1620.0) }
+        repeat(40) { detector.accept(1700.0) }
+        assertTrue("噪声底 1620 时 1700 应算静音", detector.accept(1700.0))
+        assertFalse("噪声底 1620 时 9300 应算说话", detector.accept(9300.0))
+    }
+
+    @Test fun silenceDetectorTracksQuietRoom() {
+        val detector = LocalSpeechRecognizer.SilenceDetector()
+        repeat(LocalSpeechRecognizer.SILENCE_PRIME_FRAMES) { detector.accept(200.0) }
+        assertTrue("安静房间里 250 应算静音", detector.accept(250.0))
+        assertFalse("安静房间里 2000 应算说话", detector.accept(2000.0))
+    }
+
+    @Test fun silenceDetectorPrimesOnQuietestFrame() {
+        // 第一帧很可能已经是说话声；开头取最小值，避免把阈值直接顶到说话音量。
+        val detector = LocalSpeechRecognizer.SilenceDetector()
+        detector.accept(5000.0)
+        detector.accept(300.0)
+        detector.accept(400.0)
+        assertTrue("预采样后阈值应落在安静帧附近", detector.threshold() < 1000.0)
+    }
+
+    @Test fun silenceDetectorNeverDropsBelowFloor() {
+        // 全零输入时噪声底会一路下探，阈值必须被 SILENCE_FLOOR_MIN 兜住。
+        val detector = LocalSpeechRecognizer.SilenceDetector()
+        repeat(200) { detector.accept(0.0) }
+        assertEquals(LocalSpeechRecognizer.SILENCE_FLOOR_MIN, detector.threshold(), 1e-9)
+        assertFalse("阈值下限之上仍应算说话", detector.accept(2000.0))
     }
 
     // ---- 交给 native 的采样率 ----

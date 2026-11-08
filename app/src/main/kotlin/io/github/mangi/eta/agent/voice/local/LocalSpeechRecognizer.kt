@@ -29,8 +29,25 @@ internal object LocalSpeechRecognizer {
     /** 录音器一帧 6400 字节，即 3200 个 16 位采样点。 */
     internal const val FRAME_SAMPLES = 3_200
 
-    /** 与录音器算音量用的量级对齐；低于它按静音计，用于停顿判定。 */
-    internal const val SILENCE_RMS = 800.0
+    /**
+     * 停顿判定的噪声底绝对下限。
+     *
+     * 阈值是「噪声底 × [SILENCE_RATIO]」而不是固定值：实测录音的噪声底从 286 到 6071
+     * 都有，固定阈值在安静房间会把呼吸当说话，在嘈杂环境又永远不会触发。
+     */
+    internal const val SILENCE_FLOOR_MIN = 300.0
+
+    /** 高于噪声底这么多倍才算说话；实测停顿段约为噪声底的 1~2 倍，留出余量。 */
+    internal const val SILENCE_RATIO = 2.5
+
+    /** 判定为静音时噪声底快速下探，避免一次误判把阈值一直顶在高位。 */
+    internal const val SILENCE_ATTACK = 0.5
+
+    /** 判定为说话时噪声底极慢上浮，跟得上环境变吵又不被语音本身带偏。 */
+    internal const val SILENCE_RELEASE = 0.002
+
+    /** 开头几帧先取最小值当噪声底：第一帧很可能已经是说话声，直接采用会把阈值顶高。 */
+    internal const val SILENCE_PRIME_FRAMES = 3
 
     const val MODEL_MISSING = "本地识别模型还没下载，请到设置里下载后再用"
     const val MODEL_LOAD_FAILED = "本地识别模型无法加载，请重新下载模型"
@@ -52,6 +69,7 @@ internal object LocalSpeechRecognizer {
         try {
             val samples = FloatArray(FRAME_SAMPLES)
             val silenceSamples = if (automaticEndpoint) endpointSilenceMs * SAMPLE_RATE / 1000 else 0
+            val silence = if (silenceSamples > 0) SilenceDetector() else null
             var trailingSilence = 0
             var lastText = ""
             // 模型就绪后再通知调用方开始录音：onReady 才是启动录音的地方，而模型加载要几秒，
@@ -71,8 +89,8 @@ internal object LocalSpeechRecognizer {
                     lastText = text
                     onPreview(text)
                 }
-                if (silenceSamples > 0) {
-                    trailingSilence = if (isSilent(frame, count)) trailingSilence + count else 0
+                if (silence != null) {
+                    trailingSilence = if (silence.accept(rms(frame, count))) trailingSilence + count else 0
                     if (trailingSilence >= silenceSamples) {
                         onEndpoint()
                         break
@@ -102,8 +120,41 @@ internal object LocalSpeechRecognizer {
     internal fun nativeBuffer(samples: FloatArray, count: Int): FloatArray =
         if (count == samples.size) samples else samples.copyOf(count)
 
-    /** 一帧能量低于阈值即视为静音；用 RMS 而非峰值，避免单个尖峰误判为说话。 */
-    internal fun isSilent(frame: ByteArray, count: Int): Boolean {
+    /**
+     * 自适应静音判定：维护一条缓慢跟随的噪声底，一帧能量低于「噪声底 × [SILENCE_RATIO]」即视为静音。
+     *
+     * 噪声底只在会话内有效，新一次识别重新建。开头 [SILENCE_PRIME_FRAMES] 帧取最小值作为初值，
+     * 此后静音帧让它快速下探、说话帧让它极慢上浮，因此既能适配安静房间，也能适配持续底噪。
+     */
+    internal class SilenceDetector {
+        private var floor: Double? = null
+        private val primed = ArrayList<Double>(SILENCE_PRIME_FRAMES)
+
+        /** 传入一帧的 RMS，返回这一帧是否算静音。 */
+        fun accept(rms: Double): Boolean {
+            val current = floor
+            if (current == null) {
+                primed.add(rms)
+                if (primed.size < SILENCE_PRIME_FRAMES) return rms < SILENCE_FLOOR_MIN
+                val initial = primed.min()
+                floor = initial
+                return rms < threshold(initial)
+            }
+            val silent = rms < threshold(current)
+            val rate = if (silent) SILENCE_ATTACK else SILENCE_RELEASE
+            floor = current + (rms - current) * rate
+            return silent
+        }
+
+        /** 当前阈值，便于日志与测试观察。 */
+        internal fun threshold(): Double = threshold(floor ?: return SILENCE_FLOOR_MIN)
+
+        private fun threshold(base: Double): Double =
+            maxOf(SILENCE_FLOOR_MIN, base * SILENCE_RATIO)
+    }
+
+    /** 一帧的 RMS；用均方根而非峰值，避免单个尖峰被当成说话。 */
+    internal fun rms(frame: ByteArray, count: Int): Double {
         var energy = 0.0
         var index = 0
         while (index + 1 < count * 2) {
@@ -111,8 +162,12 @@ internal object LocalSpeechRecognizer {
             energy += sample * sample
             index += 2
         }
-        return kotlin.math.sqrt(energy / count) < SILENCE_RMS
+        return kotlin.math.sqrt(energy / count)
     }
+
+    /** 固定阈值判定，仅供测试与对照；正式链路用 [SilenceDetector]。 */
+    internal fun isSilent(frame: ByteArray, count: Int, threshold: Double = SILENCE_FLOOR_MIN): Boolean =
+        rms(frame, count) < threshold
 
     internal fun pcm16ToFloat(frame: ByteArray, count: Int, out: FloatArray) {
         var index = 0

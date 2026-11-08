@@ -7,7 +7,6 @@ import io.github.mangi.eta.core.AndroidAgentLogger
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -121,49 +120,6 @@ internal class LocalAsrModelStore(
         true
     }
 
-    /**
-     * 从用户选中的归档导入。不做摘要校验——用户可能拿的是别的档位或自己重新打包的，
-     * 只要结构对得上就能用；结构不对时解压后必需文件检查会失败并如实报告。
-     */
-    suspend fun importArchive(source: InputStream, onState: (LocalAsrModelState) -> Unit): Boolean =
-        withContext(Dispatchers.IO) {
-            val archive = archiveFile()
-            archive.parentFile?.mkdirs()
-            onState(LocalAsrModelState.Unpacking)
-            val copied = try {
-                source.use { input ->
-                    FileOutputStream(archive).use { output -> input.copyTo(output, DEFAULT_BUFFER) }
-                }
-                true
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Exception) {
-                AndroidAgentLogger.warn("Local ASR model import copy failed: ${error.javaClass.simpleName}")
-                false
-            }
-            if (!copied) {
-                archive.delete()
-                onState(LocalAsrModelState.Failed(IMPORT_FAILED))
-                return@withContext false
-            }
-            val unpacked = try {
-                unpack(archive)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Exception) {
-                AndroidAgentLogger.warn("Local ASR model import unpack failed: ${error.javaClass.simpleName}")
-                false
-            } finally {
-                archive.delete()
-            }
-            if (!unpacked) {
-                onState(LocalAsrModelState.Failed(UNPACK_FAILED))
-                return@withContext false
-            }
-            onState(LocalAsrModelState.Ready(installedBytes()))
-            true
-        }
-
     /** 删除模型目录；下载中的归档一并清掉。 */
     suspend fun delete(): Boolean = withContext(Dispatchers.IO) {
         markerFile().delete()
@@ -235,6 +191,5 @@ internal class LocalAsrModelStore(
 
         const val DOWNLOAD_FAILED = "模型下载失败，请检查网络后重试"
         const val UNPACK_FAILED = "模型解压失败，归档可能已损坏，请重新下载"
-        const val IMPORT_FAILED = "无法读取所选文件，请重新选择"
     }
 }

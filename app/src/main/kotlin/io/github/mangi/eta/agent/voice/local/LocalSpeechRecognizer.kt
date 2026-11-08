@@ -10,6 +10,9 @@ import io.github.mangi.eta.agent.voice.SpeechFailure
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -184,10 +187,17 @@ internal object LocalSpeechRecognizer {
 /**
  * 识别器单例。模型只加载一次，多个会话共用；空闲 [IDLE_RELEASE_MS] 后释放。
  * 只在真正开始识别时按需加载，不在页面组合期预热。
+ *
+ * 释放由 [releaseSession] 排的一次性定时任务完成：会话结束就开始计时，到点仍在空闲才真正
+ * 释放。原先只在输入栏销毁时调一次 releaseIfIdle，而销毁通常发生在刚离开页面的那一刻，
+ * 那时远不到 90 秒，识别器实际上会一直常驻到进程被杀。
  */
 internal object LocalRecognizerHolder {
     private val recognizer = AtomicReference<OnlineRecognizer?>(null)
     private val lock = Any()
+    private val scheduler = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "local-asr-idle").apply { isDaemon = true }
+    }
 
     /** 设备 4 核，识别本身远快于实时，2 线程足够且留出余量给界面。 */
     private const val THREADS = 2
@@ -199,9 +209,14 @@ internal object LocalRecognizerHolder {
     @Volatile
     private var busy = false
 
+    @Volatile
+    private var pendingRelease: ScheduledFuture<*>? = null
+
     /** 取得可用识别器；模型缺失或加载失败会抛出带提示的 [SpeechFailure]。 */
     fun acquire(): OnlineRecognizer {
         synchronized(lock) {
+            pendingRelease?.cancel(false)
+            pendingRelease = null
             recognizer.get()?.let {
                 lastUsedAt = System.currentTimeMillis()
                 busy = true
@@ -220,21 +235,29 @@ internal object LocalRecognizerHolder {
         }
     }
 
-    /** 会话结束时调用，允许空闲回收。 */
+    /** 会话结束时调用：标记空闲，并安排一次到期释放。 */
     fun releaseSession() {
         synchronized(lock) {
             busy = false
             lastUsedAt = System.currentTimeMillis()
+            pendingRelease?.cancel(false)
+            pendingRelease = scheduler.schedule(
+                { releaseIfIdle() },
+                IDLE_RELEASE_MS,
+                TimeUnit.MILLISECONDS,
+            )
         }
     }
 
-    /** 空闲释放；会话进行中不释放。 */
+    /** 空闲释放；会话进行中不释放。到期任务与页面销毁都会走到这里。 */
     fun releaseIfIdle(now: Long = System.currentTimeMillis()) {
         synchronized(lock) {
             if (busy) return
             val current = recognizer.get() ?: return
             if (now - lastUsedAt < IDLE_RELEASE_MS) return
             recognizer.set(null)
+            pendingRelease?.cancel(false)
+            pendingRelease = null
             runCatching { current.release() }
             AndroidAgentLogger.info("Local ASR recognizer released after idle")
         }
@@ -243,6 +266,8 @@ internal object LocalRecognizerHolder {
     fun releaseNow() {
         synchronized(lock) {
             busy = false
+            pendingRelease?.cancel(false)
+            pendingRelease = null
             val current = recognizer.get() ?: return
             recognizer.set(null)
             runCatching { current.release() }

@@ -23,13 +23,14 @@ import kotlinx.coroutines.withContext
  * 同一时刻只有一个会话在跑。加载一次约几秒、常驻约数百 MB，因此空闲一段时间后释放。
  */
 internal object LocalSpeechRecognizer {
-    private const val SAMPLE_RATE = 16_000
+    /** 录音器采样率；也是交给 sherpa 的采样率，两者必须一致。 */
+    internal const val SAMPLE_RATE = 16_000
 
     /** 录音器一帧 6400 字节，即 3200 个 16 位采样点。 */
-    private const val FRAME_SAMPLES = 3_200
+    internal const val FRAME_SAMPLES = 3_200
 
     /** 与录音器算音量用的量级对齐；低于它按静音计，用于停顿判定。 */
-    private const val SILENCE_RMS = 800.0
+    internal const val SILENCE_RMS = 800.0
 
     const val MODEL_MISSING = "本地识别模型还没下载，请到设置里下载后再用"
     const val MODEL_LOAD_FAILED = "本地识别模型无法加载，请重新下载模型"
@@ -63,8 +64,7 @@ internal object LocalSpeechRecognizer {
                 // acceptWaveform 的第二个参数是采样率，不是采样点数：传点数会让 native 侧按
                 // 「点数 Hz」建重采样器，下一帧长度不同就报 input sampling rate changed 并
                 // exit(-1)（进程 status=255，Java 侧拦不住）。
-                // 另外 JNI 按整个数组长度取样本，短帧必须截到实际点数，否则会把上一帧的尾巴重复喂进去。
-                stream.acceptWaveform(if (count == samples.size) samples else samples.copyOf(count), SAMPLE_RATE)
+                stream.acceptWaveform(nativeBuffer(samples, count), SAMPLE_RATE)
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
                 val text = recognizer.getResult(stream).text
                 if (text != lastText) {
@@ -94,8 +94,16 @@ internal object LocalSpeechRecognizer {
         }
     }
 
+    /**
+     * 交给 native 的采样缓冲：满帧直接复用，短帧截到实际点数。
+     *
+     * JNI 按整个数组长度取样本，短帧不截会把上一帧的尾巴重复喂进去。
+     */
+    internal fun nativeBuffer(samples: FloatArray, count: Int): FloatArray =
+        if (count == samples.size) samples else samples.copyOf(count)
+
     /** 一帧能量低于阈值即视为静音；用 RMS 而非峰值，避免单个尖峰误判为说话。 */
-    private fun isSilent(frame: ByteArray, count: Int): Boolean {
+    internal fun isSilent(frame: ByteArray, count: Int): Boolean {
         var energy = 0.0
         var index = 0
         while (index + 1 < count * 2) {
@@ -106,7 +114,7 @@ internal object LocalSpeechRecognizer {
         return kotlin.math.sqrt(energy / count) < SILENCE_RMS
     }
 
-    private fun pcm16ToFloat(frame: ByteArray, count: Int, out: FloatArray) {
+    internal fun pcm16ToFloat(frame: ByteArray, count: Int, out: FloatArray) {
         var index = 0
         var sample = 0
         while (sample < count) {

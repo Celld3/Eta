@@ -24,6 +24,12 @@ Eta 使用 [Nimbus JOSE + JWT](https://connect2id.com/products/nimbus-jose-jwt) 
 
 Eta 的应用界面使用 [Miuix](https://github.com/compose-miuix-ui/miuix)，其采用 [Apache License 2.0](https://github.com/compose-miuix-ui/miuix/blob/main/LICENSE)。
 
+## 本地语音识别
+
+本地离线识别使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 的 Android 预编译包，以动态链接方式随 APK 分发 `libsherpa-onnx-jni.so` 与 `libonnxruntime.so`。sherpa-onnx 采用 [Apache License 2.0](https://github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE)；其内置的 ONNX Runtime 采用 [MIT License](https://github.com/microsoft/onnxruntime/blob/main/LICENSE)，版权归 Microsoft Corporation。许可全文随 APK 保存在 [`assets/licenses/sherpa-onnx-Apache-2.0.txt`](../app/src/main/assets/licenses/sherpa-onnx-Apache-2.0.txt) 与 [`assets/licenses/onnxruntime-MIT.txt`](../app/src/main/assets/licenses/onnxruntime-MIT.txt)。
+
+识别模型不打包进 APK，由用户在设置页主动下载到 App 私有目录，来源为 sherpa-onnx 官方 Release 的公开资产；`LocalAsrModels` 写死其大小与 SHA-256，下载后先校验再解压。模型作者与许可信息见对应 Release 页面。
+
 ## DexKit
 
 Eta 使用 [DexKit](https://github.com/LuckyPray/DexKit) 解析系统应用的 DEX 特征，定位经过混淆的 Hook 目标。依赖版本以 `gradle/libs.versions.toml` 为准，官方发布记录见 [Releases](https://github.com/LuckyPray/DexKit/releases)。

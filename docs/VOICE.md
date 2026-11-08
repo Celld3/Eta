@@ -1,6 +1,6 @@
 # 语音识别与播报
 
-Eta 的「设置 → 语音」分别配置语音识别（ASR）与语音播报（TTS）。语音识别由 Eta 自行录音并调用用户配置的在线 API，不依赖设备预装识别引擎，也不需要 Root。默认选择千问实时识别，需填写对应凭据后使用；播报与助手自动播报默认关闭。
+Eta 的「设置 → 语音」分别配置语音识别（ASR）与语音播报（TTS）。语音识别由 Eta 自行录音，可选本地离线识别或调用用户配置的在线 API，不依赖设备预装识别引擎，也不需要 Root。默认选择千问实时识别，需填写对应凭据后使用；播报与助手自动播报默认关闭。
 
 在「语音识别」页关闭「启用语音识别」并保存，即可停用 Eta 内置语音输入。聊天和助手浮窗隐藏麦克风入口，不再启动录音或请求语音接口；原有服务、凭据和识别参数会保留，重新开启后继续使用。输入法自己的语音输入及 Eta 的语音播报不受此开关影响。
 
@@ -12,6 +12,7 @@ Eta 的「设置 → 语音」分别配置语音识别（ASR）与语音播报�
 - **智能纠错**：开启后，识别结果在交付前用当前对话模型做一次不带工具的保守校对，只修正同音字和被识别成中文谐音的英文术语，不改写正确内容。纠错最多等待 8 秒；未配置对话模型、请求失败、超时或输出长度异常时直接使用原始识别结果。聊天听写与浮窗都生效，会增加少量延迟和模型费用。
 - **回答播报**：聊天回答可手动朗读；朗读期间退到后台或锁屏会继续播放，通知栏显示「Eta 正在朗读」并可停止，离开聊天页才结束。在聊天页「更多」菜单中开启自动朗读后，每轮回答正常结束时自动朗读这一轮的最终回答；停止或失败的回合、切换会话与打开历史都不会补读，关闭开关会停止正在进行的朗读。开启「助手自动播报回答」后，仅播报浮窗中语音提问的成功最终回答，不读取思考、工具日志或代码块。
 - **取消与退出**：点击取消、开始新的录音、隐藏或关闭所属页面会终止音频任务；耳机断开、熄屏或播放失去音频焦点也会停止。因 GUI 操作隐藏浮窗后完成的任务只保留文字，不补播，不自动继续监听。
+- **本地离线识别**：在「语音识别」页把服务换成「本地 · 离线识别」，先下载模型（约 128 MB，只需一次），之后识别完全在本机进行，不联网、不产生费用。出字节奏与在线流式一致，仍由停顿判定或点击完成收尾。这条链路不读取凭据，也固定跳过智能纠错——纠错要联网调对话模型，会抵消离线与零成本。
 
 聊天页「更多」菜单提供「开启自动朗读」或「关闭自动朗读」，通过扬声器与静音图标辅助区分当前状态；未配置播报服务时隐藏该菜单项。
 
@@ -27,6 +28,7 @@ Eta 的「设置 → 语音」分别配置语音识别（ASR）与语音播报�
 | 千问短音频 ASR | `qwen3-asr-flash` | 百炼地域、API Key |
 | 千问文件转写 | `qwen3-asr-flash-filetrans` | 百炼地域、API Key、自有 OSS |
 | 豆包流式 ASR | 流式识别 2.0 | API Key；默认资源 ID `volc.seedasr.sauc.duration` |
+| 本地离线 ASR | X-ASR 160 ms 流式 Zipformer，中英混说，模型自带标点 | 无需凭据；在设置页下载模型后可用 |
 | 千问 TTS | `qwen3-tts-flash-realtime`，不可用时回落 `qwen3-tts-flash` | 百炼地域、独立播报 API Key、音色；默认 Cherry |
 | 豆包 TTS | 语音合成 2.0，双向流式，不可用时回落单向流式 | 独立播报 API Key、音色；默认 VV，资源 ID `seed-tts-2.0` |
 | Gemini TTS | Interactions 语音合成，分段流式 | Google AI Studio API Key、语音模型、音色；可选朗读风格 |
@@ -65,6 +67,10 @@ Eta 上传 WAV 后生成有效期 15 分钟的读取签名 URL，向百炼提交
 - `SpeechTranscriptRefiner` 通过 `RuntimeConfigRepository` 读取当前对话模型，复用 Provider 层发出独立的 `TRANSCRIPT_REFINE` 请求：不带工具、托管搜索与自定义请求体，可关闭思考时关闭，否则使用最低档。识别文字只作为用户消息，取消或超时会取消底层 HTTP 调用。
 - `SpeechSettingsRepository` 隔离持久化；普通配置进入现有 DataStore，凭据用 Android Keystore 的 AES-GCM 加密后保存。凭据不进入 RemotePreferences、会话、日志或数据导出；语音配置目前也不纳入手动备份。不可解密的凭据会要求重新填写，不静默当作空配置。
 - 设置页、聊天与浮窗复用相同控制器；网络与音频循环不进入 Composable、Hook 或 Agent loop，Runtime IPC 与归档格式保持兼容。
+- 本地识别把 sherpa-onnx 编进 APK（动态链接，`libsherpa-onnx-jni.so` 与 `libonnxruntime.so`），模型不进安装包，由 `LocalAsrModelStore` 按需下载到 App 私有目录。归档先落到缓存目录，按 `LocalAsrModels` 里写死的大小与 SHA-256 验收通过后才解压，解压完成写 `.ready` 标记；标记与必需文件同时存在才算可用，因此中途被杀不会留下残缺状态。清单里的地址可换镜像，摘要仍按官方 release 资产校验。
+- `LocalSpeechRecognizer` 只做纯逻辑与解码循环，识别器单例由 `LocalRecognizerHolder` 持有：首次按下麦克风才加载，多个会话共用，空闲 90 秒且没有会话在跑时释放。加载一次要把上百 MB 模型读进内存，因此不做页面组合期预热。
+- 传给 `acceptWaveform` 的第二个参数是采样率而不是采样点数，固定为录音器的 16 kHz。传点数会让 native 侧按「点数 Hz」建重采样器，下一帧长度变化就报 `input sampling rate changed` 并 `exit(-1)`——这是进程级退出，Java 侧抛不出异常也拦不住，只能用纯函数测试守住「采样率与帧长无关」这条约束。
+- 模型文件位于 App 私有目录，加载时必须把 `assetManager` 显式设为 null：native 侧检测到「绝对路径 + assetManager 非空」会直接 `exit(-1)`，同样没有 Java 异常可捕获。
 
 ## 官方资料
 
@@ -73,6 +79,7 @@ Eta 上传 WAV 后生成有效期 15 分钟的读取签名 URL，向百炼提交
 - [千问 ASR HTTP API：短音频与异步文件转写](https://help.aliyun.com/zh/model-studio/qwen-asr-api-reference)
 - [千问实时 ASR 客户端事件](https://help.aliyun.com/zh/model-studio/qwen-asr-realtime-client-events)、[服务端事件](https://help.aliyun.com/zh/model-studio/qwen-asr-realtime-server-events)
 - [豆包流式 ASR 协议](https://www.volcengine.com/docs/6561/1354869)
+- [sherpa-onnx 流式 Zipformer 与 Android 绑定](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/zipformer-transducer-models.html)、[预编译 AAR](https://github.com/k2-fsa/sherpa-onnx/releases/tag/android-libs)
 - [千问 TTS API](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、[音频播放示例](https://help.aliyun.com/zh/model-studio/non-realtime-tts-user-guide)
 - [千问音色列表](https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list)、[豆包音色列表](https://docs.volcengine.com/docs/DoubaoVoice/Tonelist-1?lang=zh)
 - [豆包单向流式 TTS HTTP](https://docs.volcengine.com/docs/DoubaoVoice/unidirectional-streaming-text-to-speech-http?lang=zh)

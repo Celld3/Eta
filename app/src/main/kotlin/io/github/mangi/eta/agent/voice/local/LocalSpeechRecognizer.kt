@@ -60,7 +60,11 @@ internal object LocalSpeechRecognizer {
                 val count = frame.size / 2
                 if (count <= 0 || count > FRAME_SAMPLES) continue
                 pcm16ToFloat(frame, count, samples)
-                stream.acceptWaveform(samples, count)
+                // acceptWaveform 的第二个参数是采样率，不是采样点数：传点数会让 native 侧按
+                // 「点数 Hz」建重采样器，下一帧长度不同就报 input sampling rate changed 并
+                // exit(-1)（进程 status=255，Java 侧拦不住）。
+                // 另外 JNI 按整个数组长度取样本，短帧必须截到实际点数，否则会把上一帧的尾巴重复喂进去。
+                stream.acceptWaveform(if (count == samples.size) samples else samples.copyOf(count), SAMPLE_RATE)
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
                 val text = recognizer.getResult(stream).text
                 if (text != lastText) {

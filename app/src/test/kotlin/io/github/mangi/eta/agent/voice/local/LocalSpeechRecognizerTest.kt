@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.voice.local
 
+import io.github.mangi.eta.agent.voice.SpeechRecorder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

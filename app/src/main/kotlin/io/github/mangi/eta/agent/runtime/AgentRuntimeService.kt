@@ -71,7 +71,6 @@ import io.github.mangi.eta.core.ModuleConfig
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.model.AppearanceSettings
-import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.app.AgentAppTheme
 import kotlin.concurrent.thread

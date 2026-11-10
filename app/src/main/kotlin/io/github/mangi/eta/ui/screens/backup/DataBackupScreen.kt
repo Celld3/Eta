@@ -148,6 +148,17 @@ internal fun DataBackupScreen(
                         },
                     )
                 }
+                AutoBackupSection(
+                    state = autoBackup.state,
+                    onToggle = autoBackup::setEnabled,
+                    onPickTime = { showTimePicker(context) { h, m -> autoBackup.setTime(h, m) } },
+                    onPickRetention = { showRetentionPicker(context, autoBackup.state.settings.retentionCount) { autoBackup.setRetention(it) } },
+                    onPickDirectory = autoBackup::setDirectory,
+                    onRequestExactAlarm = {
+                        runCatching { context.startActivity(autoBackup.exactAlarmSettingsIntent()) }
+                    },
+                    onSelectHistory = { pendingHistory = it },
+                )
                 CouiPageBottomSpacer()
             }
         }
@@ -203,20 +214,20 @@ internal fun DataBackupScreen(
                         )
                     }
                 }
+                item(key = "auto-backup") {
+                    AutoBackupSection(
+                        state = autoBackup.state,
+                        onToggle = autoBackup::setEnabled,
+                        onPickTime = { showTimePicker(context) { h, m -> autoBackup.setTime(h, m) } },
+                        onPickRetention = { showRetentionPicker(context, autoBackup.state.settings.retentionCount) { autoBackup.setRetention(it) } },
+                        onPickDirectory = autoBackup::setDirectory,
+                        onRequestExactAlarm = {
+                            runCatching { context.startActivity(autoBackup.exactAlarmSettingsIntent()) }
+                        },
+                        onSelectHistory = { pendingHistory = it },
+                    )
+                }
             }
-        }
-        item(key = "auto-backup") {
-            AutoBackupSection(
-                state = autoBackup.state,
-                onToggle = autoBackup::setEnabled,
-                onPickTime = { showTimePicker(context) { h, m -> autoBackup.setTime(h, m) } },
-                onPickRetention = { showRetentionPicker(context, autoBackup.state.settings.retentionCount) { autoBackup.setRetention(it) } },
-                onPickDirectory = autoBackup::setDirectory,
-                onRequestExactAlarm = {
-                    runCatching { context.startActivity(autoBackup.exactAlarmSettingsIntent()) }
-                },
-                onSelectHistory = { pendingHistory = it },
-            )
         }
     }
 

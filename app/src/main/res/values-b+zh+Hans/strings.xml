@@ -43,6 +43,8 @@
   <string name="action_continue">继续</string>
   <string name="action_stop">停止</string>
   <string name="action_edit">编辑</string>
+  <string name="action_pin_conversation">置顶对话</string>
+  <string name="action_unpin_conversation">取消置顶</string>
   <string name="action_rename">重命名</string>
   <string name="action_export">导出</string>
   <string name="action_done">完成</string>
@@ -151,6 +153,9 @@
   <string name="appearance_title">外观与主题</string>
   <string name="appearance_group_color">颜色与主题</string>
   <string name="appearance_group_interface">界面与效果</string>
+  <string name="appearance_ui_style">界面样式</string>
+  <string name="appearance_ui_style_coui">COUI</string>
+  <string name="appearance_ui_style_miuix">Miuix</string>
   <string name="appearance_theme_mode">主题模式</string>
   <string name="appearance_theme_system">跟随系统</string>
   <string name="appearance_theme_light">浅色</string>
@@ -1489,4 +1494,8 @@
   <string name="speech_local_model_size">占用 %1$s</string>
   <string name="speech_local_model_progress">%1$s / %2$s</string>
   <string name="speech_local_model_note">只需下载一次，保存在应用私有目录；之后识别完全离线。</string>
+  <string name="conversation_branch">在新对话中分支</string>
+  <string name="conversation_branch_title">%1$s · 分支</string>
+  <string name="conversation_branch_unavailable">无法从此处分支：仅支持上下文完整且工具调用已结束的轮次。</string>
+  <string name="conversation_branch_failed">创建分支失败，原对话已保留，请重试。</string>
 </resources>

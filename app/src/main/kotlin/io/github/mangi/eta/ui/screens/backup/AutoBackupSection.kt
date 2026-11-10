@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui.screens.backup
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Folder
@@ -12,15 +13,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.itos.coui.layout.Divider
+import com.itos.coui.layout.Group
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.backup.AutoBackupFile
+import io.github.mangi.eta.data.model.AppearanceUiStyle
 import io.github.mangi.eta.data.model.AutoBackupSettings
-import io.github.mangi.eta.ui.components.EtaArrowPreference
-import io.github.mangi.eta.ui.components.EtaPreference
-import io.github.mangi.eta.ui.components.EtaPreferenceDivider
-import io.github.mangi.eta.ui.components.EtaPreferenceGroup
-import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
-import io.github.mangi.eta.ui.components.EtaSwitchPreference
+import io.github.mangi.eta.ui.app.LocalUiStyle
+import io.github.mangi.eta.ui.components.coui.CouiPreference
+import io.github.mangi.eta.ui.components.coui.CouiSwitchPreference
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,6 +43,8 @@ internal data class AutoBackupUiState(
  * 自动备份设置与历史分组。
  *
  * 历史条目点按后由父组件弹确认框，避免在这一层嵌入恢复/删除的业务判断。
+ * COUI 与 Miuix 两套样式各自成组：COUI 用 Group + CouiPreference，
+ * Miuix 用 SmallTitle + Card + 原生 Preference，保持与设置页其余部分一致。
  */
 @Composable
 internal fun AutoBackupSection(
@@ -52,99 +60,201 @@ internal fun AutoBackupSection(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? -> if (uri != null) onPickDirectory(uri.toString()) }
 
-    EtaPreferenceGroupTitle(stringResource(R.string.data_backup_auto_title))
-    EtaPreferenceGroup(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-        EtaSwitchPreference(
-            title = stringResource(R.string.data_backup_auto_enabled),
-            summary = stringResource(R.string.data_backup_auto_enabled_summary),
-            checked = state.settings.enabled,
-            enabled = !state.busy,
-            onCheckedChange = onToggle,
-        )
-        EtaPreferenceDivider(hasLeading = true)
-        EtaArrowPreference(
-            title = stringResource(R.string.data_backup_auto_time),
-            summary = stringResource(
-                R.string.data_backup_auto_time_summary,
-                formatClock(state.settings.hour, state.settings.minute),
-            ),
-            enabled = state.settings.enabled && !state.busy,
-            startAction = { BackupIcon(Icons.Rounded.Schedule, loading = false) },
-            onClick = onPickTime,
-        )
-        EtaPreferenceDivider(hasLeading = true)
-        EtaArrowPreference(
-            title = stringResource(R.string.data_backup_auto_retention),
-            summary = stringResource(
-                R.string.data_backup_auto_retention_summary,
-                state.settings.retentionCount,
-            ),
-            enabled = state.settings.enabled && !state.busy,
-            startAction = { BackupIcon(Icons.Rounded.Storage, loading = false) },
-            onClick = onPickRetention,
-        )
-        EtaPreferenceDivider(hasLeading = true)
-        EtaArrowPreference(
-            title = stringResource(R.string.data_backup_auto_directory),
-            summary = state.settings.safDirectoryUri?.let {
-                stringResource(R.string.data_backup_auto_directory_set)
-            } ?: stringResource(R.string.data_backup_auto_directory_none),
-            enabled = state.settings.enabled && !state.busy,
-            startAction = { BackupIcon(Icons.Rounded.Folder, loading = false) },
-            onClick = { directoryLauncher.launch(null) },
-        )
-        if (state.settings.safDirectoryUri != null) {
-            EtaPreferenceDivider(hasLeading = true)
-            EtaArrowPreference(
-                title = stringResource(R.string.data_backup_auto_directory_clear),
-                enabled = state.settings.enabled && !state.busy,
-                onClick = { onPickDirectory(null) },
-            )
-        }
-        if (!state.exactAllowed && state.settings.enabled) {
-            EtaPreferenceDivider(hasLeading = true)
-            EtaArrowPreference(
-                title = stringResource(R.string.data_backup_auto_exactness),
-                summary = stringResource(R.string.data_backup_auto_exactness_denied),
-                onClick = onRequestExactAlarm,
-            )
-        }
-        EtaPreferenceDivider(hasLeading = true)
-        EtaArrowPreference(
-            title = stringResource(R.string.data_backup_auto_next),
-            summary = state.nextTriggerAt?.let {
-                stringResource(R.string.data_backup_auto_next_value, formatDateTime(it))
-            } ?: describeLastRun(state.settings),
-        )
-        if (state.settings.lastSafFailureAt != null) {
-            EtaPreferenceDivider(hasLeading = true)
-            EtaPreference(
-                title = stringResource(R.string.data_backup_auto_saf_failure_title),
-                summary = stringResource(
-                    R.string.data_backup_auto_saf_failure,
-                    formatDateTime(state.settings.lastSafFailureAt),
-                    state.settings.lastSafFailureKind ?: "-",
-                ),
-            )
-        }
-    }
+    val settingsGroupTitle = stringResource(R.string.data_backup_auto_title)
+    val historyGroupTitle = stringResource(R.string.data_backup_history_title)
 
-    EtaPreferenceGroupTitle(stringResource(R.string.data_backup_history_title))
-    EtaPreferenceGroup(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-        if (state.history.isEmpty()) {
-            EtaPreference(title = stringResource(R.string.data_backup_history_empty))
-        } else {
-            state.history.forEachIndexed { index, entry ->
-                if (index > 0) EtaPreferenceDivider(hasLeading = true)
-                EtaArrowPreference(
-                    title = stringResource(
-                        R.string.data_backup_history_entry,
-                        formatDateTime(entry.createdAt),
-                        formatSize(entry.sizeBytes),
-                    ),
+    when (LocalUiStyle.current) {
+        AppearanceUiStyle.COUI -> {
+            Group(title = settingsGroupTitle) {
+                CouiSwitchPreference(
+                    title = stringResource(R.string.data_backup_auto_enabled),
+                    summary = stringResource(R.string.data_backup_auto_enabled_summary),
+                    checked = state.settings.enabled,
                     enabled = !state.busy,
-                    onClick = { onSelectHistory(entry) },
+                    onCheckedChange = onToggle,
                 )
+                Divider()
+                CouiPreference(
+                    title = stringResource(R.string.data_backup_auto_time),
+                    summary = stringResource(
+                        R.string.data_backup_auto_time_summary,
+                        formatClock(state.settings.hour, state.settings.minute),
+                    ),
+                    enabled = state.settings.enabled && !state.busy,
+                    onClick = onPickTime,
+                )
+                Divider()
+                CouiPreference(
+                    title = stringResource(R.string.data_backup_auto_retention),
+                    summary = stringResource(
+                        R.string.data_backup_auto_retention_summary,
+                        state.settings.retentionCount,
+                    ),
+                    enabled = state.settings.enabled && !state.busy,
+                    onClick = onPickRetention,
+                )
+                Divider()
+                CouiPreference(
+                    title = stringResource(R.string.data_backup_auto_directory),
+                    summary = state.settings.safDirectoryUri?.let {
+                        stringResource(R.string.data_backup_auto_directory_set)
+                    } ?: stringResource(R.string.data_backup_auto_directory_none),
+                    enabled = state.settings.enabled && !state.busy,
+                    onClick = { directoryLauncher.launch(null) },
+                )
+                if (state.settings.safDirectoryUri != null) {
+                    Divider()
+                    CouiPreference(
+                        title = stringResource(R.string.data_backup_auto_directory_clear),
+                        enabled = state.settings.enabled && !state.busy,
+                        onClick = { onPickDirectory(null) },
+                    )
+                }
+                if (!state.exactAllowed && state.settings.enabled) {
+                    Divider()
+                    CouiPreference(
+                        title = stringResource(R.string.data_backup_auto_exactness),
+                        summary = stringResource(R.string.data_backup_auto_exactness_denied),
+                        onClick = onRequestExactAlarm,
+                    )
+                }
+                Divider()
+                CouiPreference(
+                    title = stringResource(R.string.data_backup_auto_next),
+                    summary = state.nextTriggerAt?.let {
+                        stringResource(R.string.data_backup_auto_next_value, formatDateTime(it))
+                    } ?: describeLastRun(state.settings),
+                )
+                if (state.settings.lastSafFailureAt != null) {
+                    Divider()
+                    CouiPreference(
+                        title = stringResource(R.string.data_backup_auto_saf_failure_title),
+                        summary = stringResource(
+                            R.string.data_backup_auto_saf_failure,
+                            formatDateTime(state.settings.lastSafFailureAt),
+                            state.settings.lastSafFailureKind ?: "-",
+                        ),
+                    )
+                }
+            }
+
+            Group(title = historyGroupTitle) {
+                if (state.history.isEmpty()) {
+                    CouiPreference(title = stringResource(R.string.data_backup_history_empty))
+                } else {
+                    state.history.forEachIndexed { index, entry ->
+                        if (index > 0) Divider()
+                        CouiPreference(
+                            title = stringResource(
+                                R.string.data_backup_history_entry,
+                                formatDateTime(entry.createdAt),
+                                formatSize(entry.sizeBytes),
+                            ),
+                            enabled = !state.busy,
+                            onClick = { onSelectHistory(entry) },
+                        )
+                    }
+                }
+            }
+        }
+
+        AppearanceUiStyle.MIUIX -> {
+            Column {
+                SmallTitle(text = settingsGroupTitle)
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 12.dp),
+                ) {
+                    SwitchPreference(
+                        title = stringResource(R.string.data_backup_auto_enabled),
+                        summary = stringResource(R.string.data_backup_auto_enabled_summary),
+                        checked = state.settings.enabled,
+                        enabled = !state.busy,
+                        onCheckedChange = onToggle,
+                    )
+                    ArrowPreference(
+                        title = stringResource(R.string.data_backup_auto_time),
+                        summary = stringResource(
+                            R.string.data_backup_auto_time_summary,
+                            formatClock(state.settings.hour, state.settings.minute),
+                        ),
+                        enabled = state.settings.enabled && !state.busy,
+                        onClick = onPickTime,
+                    )
+                    ArrowPreference(
+                        title = stringResource(R.string.data_backup_auto_retention),
+                        summary = stringResource(
+                            R.string.data_backup_auto_retention_summary,
+                            state.settings.retentionCount,
+                        ),
+                        enabled = state.settings.enabled && !state.busy,
+                        onClick = onPickRetention,
+                    )
+                    ArrowPreference(
+                        title = stringResource(R.string.data_backup_auto_directory),
+                        summary = state.settings.safDirectoryUri?.let {
+                            stringResource(R.string.data_backup_auto_directory_set)
+                        } ?: stringResource(R.string.data_backup_auto_directory_none),
+                        enabled = state.settings.enabled && !state.busy,
+                        onClick = { directoryLauncher.launch(null) },
+                    )
+                    if (state.settings.safDirectoryUri != null) {
+                        ArrowPreference(
+                            title = stringResource(R.string.data_backup_auto_directory_clear),
+                            enabled = state.settings.enabled && !state.busy,
+                            onClick = { onPickDirectory(null) },
+                        )
+                    }
+                    if (!state.exactAllowed && state.settings.enabled) {
+                        ArrowPreference(
+                            title = stringResource(R.string.data_backup_auto_exactness),
+                            summary = stringResource(R.string.data_backup_auto_exactness_denied),
+                            onClick = onRequestExactAlarm,
+                        )
+                    }
+                    ArrowPreference(
+                        title = stringResource(R.string.data_backup_auto_next),
+                        summary = state.nextTriggerAt?.let {
+                            stringResource(R.string.data_backup_auto_next_value, formatDateTime(it))
+                        } ?: describeLastRun(state.settings),
+                    )
+                    if (state.settings.lastSafFailureAt != null) {
+                        BasicComponent(
+                            title = stringResource(R.string.data_backup_auto_saf_failure_title),
+                            summary = stringResource(
+                                R.string.data_backup_auto_saf_failure,
+                                formatDateTime(state.settings.lastSafFailureAt),
+                                state.settings.lastSafFailureKind ?: "-",
+                            ),
+                        )
+                    }
+                }
+            }
+
+            Column {
+                SmallTitle(text = historyGroupTitle)
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 12.dp),
+                ) {
+                    if (state.history.isEmpty()) {
+                        BasicComponent(title = stringResource(R.string.data_backup_history_empty))
+                    } else {
+                        state.history.forEachIndexed { index, entry ->
+                            ArrowPreference(
+                                title = stringResource(
+                                    R.string.data_backup_history_entry,
+                                    formatDateTime(entry.createdAt),
+                                    formatSize(entry.sizeBytes),
+                                ),
+                                enabled = !state.busy,
+                                onClick = { onSelectHistory(entry) },
+                            )
+                        }
+                    }
+                }
             }
         }
     }

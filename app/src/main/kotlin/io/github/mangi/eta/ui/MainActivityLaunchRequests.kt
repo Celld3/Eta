@@ -45,6 +45,16 @@ internal data class MainActivityLaunchRequests(
         -> intent.toIncomingShareRequest()?.let { request ->
             copy(sharedContent = request)
         } ?: this
+        // 划词菜单：选中文本后从系统文本操作栏进入，只有正文没有附件。
+        // 上游原本不处理这个 Action，这里补上并复用同一套 IncomingShareRequest 通道，
+        // 让划词与分享走完全相同的预填逻辑。
+        Intent.ACTION_PROCESS_TEXT -> intent
+            .getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)
+            ?.toString()
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?.let { text -> copy(sharedContent = IncomingShareRequest(text = text)) }
+            ?: this
         else -> this
     }
 

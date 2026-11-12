@@ -43,9 +43,20 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
     val store = remember { SpeechSettingsStore(context, scope) }
     SpeechLifecycle { store.stop() }
     val settings = store.settings
-    // 本地识别未启用时整条链路不出现，四个云端服务保持原样。
+    // 本地识别未启用时整条链路不出现，云端服务保持原样。
     val providers = remember { AsrProvider.selectable }
     val asrLabels = providers.map { it.label() }
+    val asrNoteRes = when (settings.asr) {
+        AsrProvider.QWEN_REALTIME, AsrProvider.DOUBAO -> R.string.speech_asr_note_streaming
+        AsrProvider.QWEN_FLASH -> R.string.speech_asr_note_flash
+        AsrProvider.QWEN_FILE -> R.string.speech_asr_note_file
+        AsrProvider.MIMO -> R.string.speech_asr_note_mimo
+        AsrProvider.LOCAL -> R.string.speech_asr_note_local
+    }
+    val showQwenLanguage = when (settings.asr) {
+        AsrProvider.QWEN_REALTIME, AsrProvider.QWEN_FLASH, AsrProvider.QWEN_FILE -> true
+        AsrProvider.DOUBAO, AsrProvider.MIMO, AsrProvider.LOCAL -> false
+    }
 
     when (LocalUiStyle.current) {
         AppearanceUiStyle.COUI -> {
@@ -75,23 +86,14 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
                             },
                         )
                     }
-                    SpeechNote(
-                        stringResource(
-                            when (settings.asr) {
-                                AsrProvider.QWEN_REALTIME, AsrProvider.DOUBAO -> R.string.speech_asr_note_streaming
-                                AsrProvider.QWEN_FLASH -> R.string.speech_asr_note_flash
-                                AsrProvider.QWEN_FILE -> R.string.speech_asr_note_file
-                                AsrProvider.LOCAL -> R.string.speech_asr_note_local
-                            },
-                        ),
-                    )
+                    SpeechNote(stringResource(asrNoteRes))
                     if (settings.asr == AsrProvider.LOCAL) {
                         // 本地识别不联网、不需要凭据；这里换成模型下载与管理。
                         LocalAsrModelSection()
                     } else {
                         SpeechConnectionSection(store, synthesis = false)
                     }
-                    if (settings.asr != AsrProvider.DOUBAO && settings.asr != AsrProvider.LOCAL) {
+                    if (showQwenLanguage) {
                         SpeechGroupCard {
                             SpeechFieldColumn {
                                 SpeechField(
@@ -154,16 +156,7 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
                                     },
                                 )
                             }
-                            SpeechNote(
-                                stringResource(
-                                    when (settings.asr) {
-                                        AsrProvider.QWEN_REALTIME, AsrProvider.DOUBAO -> R.string.speech_asr_note_streaming
-                                        AsrProvider.QWEN_FLASH -> R.string.speech_asr_note_flash
-                                        AsrProvider.QWEN_FILE -> R.string.speech_asr_note_file
-                                        AsrProvider.LOCAL -> R.string.speech_asr_note_local
-                                    },
-                                ),
-                            )
+                            SpeechNote(stringResource(asrNoteRes))
                         }
                     }
                     if (settings.asr == AsrProvider.LOCAL) {
@@ -173,7 +166,7 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
                             SpeechConnectionSection(store, synthesis = false)
                         }
                     }
-                    if (settings.asr != AsrProvider.DOUBAO && settings.asr != AsrProvider.LOCAL) {
+                    if (showQwenLanguage) {
                         item(key = "language") {
                             SpeechGroupCard {
                                 SpeechFieldColumn {
@@ -221,7 +214,10 @@ internal fun SpeechRecognitionScreen(onBack: () -> Unit, onOpenOss: () -> Unit) 
 @Composable
 private fun SpeechResultSection(store: SpeechSettingsStore) {
     val settings = store.settings
-    val streaming = settings.asr != AsrProvider.QWEN_FLASH && settings.asr != AsrProvider.QWEN_FILE
+    // 流式识别才支持静音自动发送；本地识别同样是流式，须并入白名单。
+    val streaming = settings.asr == AsrProvider.QWEN_REALTIME ||
+        settings.asr == AsrProvider.DOUBAO ||
+        settings.asr == AsrProvider.LOCAL
     val options = SpeechSettings.AUTO_SEND_SILENCE_OPTIONS
     val optionLabels = options.map { millis ->
         if (millis == 0) {

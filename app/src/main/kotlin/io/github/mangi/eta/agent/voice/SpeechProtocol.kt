@@ -59,10 +59,22 @@ internal fun validateSpeechSettings(settings: SpeechSettings, secrets: SpeechCre
                     throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "MiniMax 语速须在 0.5～2 倍之间")
                 }
             }
+            TtsProvider.MIMO -> {
+                required(secrets.mimoTts, "MiMo 播报 API Key")
+                required(settings.mimoTts.voice, "音色")
+                speechBaseUrl(settings.mimoTts.baseUrl)
+                if (settings.mimoTts.style.length > 500) {
+                    throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "朗读风格请控制在 500 字以内")
+                }
+            }
         }
     } else when (settings.asr) {
         // 本地识别不需要任何网络凭据，模型是否就绪由识别链路在启动时单独检查。
         AsrProvider.LOCAL -> Unit
+        AsrProvider.MIMO -> {
+            required(secrets.mimoAsr, "MiMo 识别 API Key")
+            speechBaseUrl(settings.mimoAsr.baseUrl)
+        }
         AsrProvider.DOUBAO -> {
             required(secrets.doubaoAsr, "豆包识别凭据")
             speechBaseUrl(settings.doubaoAsr.baseUrl)

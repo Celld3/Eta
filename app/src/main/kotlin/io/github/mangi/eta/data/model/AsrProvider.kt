@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class AsrProvider {
-    QWEN_REALTIME, QWEN_FLASH, QWEN_FILE, DOUBAO,
+    QWEN_REALTIME, QWEN_FLASH, QWEN_FILE, DOUBAO, MIMO,
 
     /** 本地离线识别，模型按需下载，识别过程不联网。 */
     LOCAL,

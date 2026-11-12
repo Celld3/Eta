@@ -41,6 +41,8 @@ internal fun SpeechConnectionSection(store: SpeechSettingsStore, synthesis: Bool
     if (!synthesis) {
         when (store.settings.asr) {
             AsrProvider.MIMO -> MimoAsrConnectionSection(store)
+            // 本地识别不联网、无需凭据，连接配置整段隐藏（调用方已按 LOCAL 分流）。
+            AsrProvider.LOCAL -> Unit
             AsrProvider.QWEN_REALTIME, AsrProvider.QWEN_FLASH, AsrProvider.QWEN_FILE, AsrProvider.DOUBAO ->
                 QwenDoubaoConnectionSection(store, synthesis = false)
         }

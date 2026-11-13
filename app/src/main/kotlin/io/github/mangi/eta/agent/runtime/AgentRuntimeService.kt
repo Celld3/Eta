@@ -366,7 +366,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 } else {
                     val runtimeConfig = runBlocking {
                         if (AgentRuntimeRequestConfigResolver.usesDefaultRuntimeConfig(request)) {
-                            RuntimeConfigRepository.currentRuntimeConfig()
+                            RuntimeConfigRepository.assistantOverlayRuntimeConfig()
                         } else {
                             RuntimeConfigRepository.oauthRuntimeConfigFor(
                                 providerId = request.config.providerId,

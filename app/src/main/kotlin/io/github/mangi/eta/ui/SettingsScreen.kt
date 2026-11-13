@@ -14,7 +14,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dashboard
@@ -397,6 +399,12 @@ private fun SettingsPageContent(
                     )
                     CouiIconDivider()
                     CouiPreference(
+                        title = stringResource(R.string.conversation_title_settings_title),
+                        icon = { CouiSettingsIcon(Icons.Rounded.AutoAwesome, SettingsIconColors.Blue) },
+                        onClick = { onNavigate(AppRoute.ConversationTitleSettings) },
+                    )
+                    CouiIconDivider()
+                    CouiPreference(
                         title = stringResource(R.string.ui_memory_b55ff5),
                         icon = {
                             CouiSettingsIcon(
@@ -504,6 +512,17 @@ private fun SettingsPageContent(
                             )
                         },
                         onClick = openAssistantSettings,
+                    )
+                    CouiIconDivider()
+                    CouiPreference(
+                        title = stringResource(R.string.assistant_overlay_settings_title),
+                        icon = {
+                            CouiSettingsIcon(
+                                Icons.Rounded.ChatBubble,
+                                SettingsIconColors.Blue,
+                            )
+                        },
+                        onClick = { onNavigate(AppRoute.AssistantOverlaySettings) },
                     )
                     if (prefs != null || hasConnectedFramework) {
                         CouiIconDivider()
@@ -817,6 +836,16 @@ private fun SettingsPageContent(
                             iconTint = SettingsIconColors.Blue,
                         )
                         ArrowPreference(
+                            title = stringResource(R.string.conversation_title_settings_title),
+                            startAction = {
+                                SettingsIcon(
+                                    icon = Icons.Rounded.AutoAwesome,
+                                    tint = SettingsIconColors.Blue,
+                                )
+                            },
+                            onClick = { onNavigate(AppRoute.ConversationTitleSettings) },
+                        )
+                        ArrowPreference(
                             title = stringResource(R.string.ui_memory_b55ff5),
                             startAction = {
                                 SettingsIcon(
@@ -930,6 +959,16 @@ private fun SettingsPageContent(
                                 )
                             },
                             onClick = openAssistantSettings,
+                        )
+                        ArrowPreference(
+                            title = stringResource(R.string.assistant_overlay_settings_title),
+                            startAction = {
+                                SettingsIcon(
+                                    icon = Icons.Rounded.ChatBubble,
+                                    tint = SettingsIconColors.Blue,
+                                )
+                            },
+                            onClick = { onNavigate(AppRoute.AssistantOverlaySettings) },
                         )
                         if (prefs != null || hasConnectedFramework) {
                             OverlayDropdownPreference(

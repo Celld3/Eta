@@ -30,14 +30,14 @@ class AssistantBindingTest {
         assertEquals(ModuleConfig.ETA_PACKAGE, eta.packageName)
         assertEquals(ModuleConfig.ETA_VOICE_INTERACTION_COMPONENT, eta.componentName)
         assertEquals(
-            "${ModuleConfig.ETA_PACKAGE}/.agent.voice.EtaVoiceInteractionService",
+            ModuleConfig.ETA_VOICE_INTERACTION_COMPONENT,
             eta.shortComponentName,
         )
         assertEquals(ModuleConfig.GOOGLE_ASSISTANT_COMPONENT, gemini.shortComponentName)
         assertTrue(
             isSameComponentName(
                 eta.componentName,
-                "${ModuleConfig.ETA_PACKAGE}/.agent.voice.EtaVoiceInteractionService",
+                ModuleConfig.ETA_VOICE_INTERACTION_COMPONENT,
             ),
         )
         assertFalse(
@@ -113,7 +113,7 @@ class AssistantBindingTest {
     @Test
     fun `assistant setting guard rewrites only xiaoai overwrites while auto config is enabled`() {
         assertEquals(
-            "${ModuleConfig.ETA_PACKAGE}/.agent.voice.EtaVoiceInteractionService",
+            ModuleConfig.ETA_VOICE_INTERACTION_COMPONENT,
             rewriteManagedAssistantSettingIfOverwritten(
                 autoConfigEnabled = true,
                 target = PowerAssistantTarget.ETA,
@@ -150,7 +150,7 @@ class AssistantBindingTest {
                 autoConfigEnabled = true,
                 target = PowerAssistantTarget.ETA,
                 key = ModuleConfig.SECURE_VOICE_INTERACTION_SERVICE,
-                value = "${ModuleConfig.ETA_PACKAGE}/.agent.voice.EtaVoiceInteractionService",
+                value = ModuleConfig.ETA_VOICE_INTERACTION_COMPONENT,
             ),
         )
     }

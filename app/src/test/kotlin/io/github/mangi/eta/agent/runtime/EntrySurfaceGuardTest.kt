@@ -9,41 +9,17 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
+import io.github.mangi.eta.agent.runtime.ipc.AgentRuntimeWire
 
 class EntrySurfaceGuardTest {
     @Test
     fun disabledHandoffDoesNotCreateGuard() {
         val guard = EntrySurfaceGuard.from(
-            handoff = handoff(source = "breeno", dismiss = false),
+            handoff = handoff(source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE, dismiss = false),
             logger = NoOpLogger,
         )
 
         assertNull(guard)
-    }
-
-    @Test
-    fun breenoGuardKeepsExclusionUntilTheFirstScreenshotConsumesIt() {
-        val guard = EntrySurfaceGuard.from(
-            handoff = handoff(source = "breeno", dismiss = true),
-            logger = NoOpLogger,
-        )
-
-        assertNotNull(guard)
-        assertEquals("com.heytap.speechassist", guard?.targetPackageName)
-        assertEquals(setOf("com.heytap.speechassist"), guard?.consumeScreenshotExcludedPackages())
-        assertTrue(guard?.consumeScreenshotExcludedPackages().orEmpty().isEmpty())
-    }
-
-    @Test
-    fun xiaoAiGuardUsesOnlyTheXiaoAiPackage() {
-        val guard = EntrySurfaceGuard.from(
-            handoff = handoff(source = "xiaoai", dismiss = true),
-            logger = NoOpLogger,
-        )
-
-        assertNotNull(guard)
-        assertEquals("com.miui.voiceassist", guard?.targetPackageName)
-        assertEquals(setOf("com.miui.voiceassist"), guard?.consumeScreenshotExcludedPackages())
     }
 
     @Test
@@ -105,14 +81,14 @@ class EntrySurfaceGuardTest {
         assertEquals(
             EntrySurfaceDismissPolicy.Decision.ALREADY_GONE,
             EntrySurfaceDismissPolicy.decide(
-                targetPackageName = "com.heytap.speechassist",
+                targetPackageName = "io.github.mangi.eta",
                 visibility = PackageWindowVisibility.GONE,
             ),
         )
         assertEquals(
             EntrySurfaceDismissPolicy.Decision.SEND_BACK,
             EntrySurfaceDismissPolicy.decide(
-                targetPackageName = "com.heytap.speechassist",
+                targetPackageName = "io.github.mangi.eta",
                 visibility = PackageWindowVisibility.VISIBLE,
             ),
         )
@@ -130,7 +106,7 @@ class EntrySurfaceGuardTest {
         assertEquals(
             EntrySurfaceDismissPolicy.Decision.DEFER,
             EntrySurfaceDismissPolicy.decide(
-                targetPackageName = "com.heytap.speechassist",
+                targetPackageName = "io.github.mangi.eta",
                 visibility = PackageWindowVisibility.UNKNOWN,
             ),
         )

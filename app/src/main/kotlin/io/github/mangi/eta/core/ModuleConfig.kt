@@ -12,8 +12,6 @@ internal object ModuleConfig {
     const val XIAOMI_LAUNCHER_PACKAGE = "com.miui.home"
     const val XIAOMI_GLOBAL_LAUNCHER_PACKAGE = "com.mi.android.globallauncher"
     val XIAOMI_LAUNCHER_PACKAGES = setOf(XIAOMI_LAUNCHER_PACKAGE, XIAOMI_GLOBAL_LAUNCHER_PACKAGE)
-    const val XIAOAI_CORE_PROCESS = "$XIAOAI_PACKAGE:core"
-    val AGENT_RUNTIME_ENTRY_PACKAGES = setOf(BREENO_PACKAGE, XIAOAI_PACKAGE)
     const val GOOGLE_ASSISTANT_COMPONENT =
         "$GOOGLE_PACKAGE/com.google.android.voiceinteraction.GsaVoiceInteractionService"
     const val ETA_VOICE_INTERACTION_COMPONENT =

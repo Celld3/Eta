@@ -75,6 +75,17 @@ internal interface ConversationDao : ChunkedTextDao {
         restoreText("conversations", conversationId, "roleplay", it)
     }
 
+    @Query("UPDATE conversations SET roleplay_json = :roleplayJson WHERE id = :conversationId")
+    suspend fun updateRoleplayJsonRow(conversationId: String, roleplayJson: String)
+
+    @Transaction
+    suspend fun updateRoleplayJson(conversationId: String, roleplayJson: String) {
+        updateRoleplayJsonRow(
+            conversationId,
+            storeText("conversations", conversationId, "roleplay", roleplayJson),
+        )
+    }
+
     @Query("SELECT * FROM conversation_messages ORDER BY conversation_id ASC, sort_index ASC")
     suspend fun messageRows(): List<ConversationMessageEntity>
 
@@ -173,6 +184,28 @@ internal interface ConversationDao : ChunkedTextDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE conversation_id = :conversationId AND id = :messageId AND type = 'assistant')")
     suspend fun hasAssistantMessage(conversationId: String, messageId: String): Boolean
+
+    @Query(
+        "SELECT * FROM conversation_messages WHERE conversation_id = :conversationId " +
+            "AND type = 'user' AND images_json != '[]' AND images_json != '' " +
+            "ORDER BY sort_index DESC LIMIT 1",
+    )
+    suspend fun latestUserMessageWithImagesRow(conversationId: String): ConversationMessageEntity?
+
+    @Transaction
+    suspend fun latestUserMessageWithImages(conversationId: String): ConversationMessageEntity? =
+        latestUserMessageWithImagesRow(conversationId)?.let { restoreMessage(it) }
+
+    @Query(
+        "SELECT * FROM conversation_messages WHERE conversation_id = :conversationId " +
+            "AND type = 'tool' AND tool_name = :toolName AND tool_status = 'Success' " +
+            "ORDER BY sort_index DESC LIMIT 1",
+    )
+    suspend fun latestSuccessfulToolMessageRow(conversationId: String, toolName: String): ConversationMessageEntity?
+
+    @Transaction
+    suspend fun latestSuccessfulToolMessage(conversationId: String, toolName: String): ConversationMessageEntity? =
+        latestSuccessfulToolMessageRow(conversationId, toolName)?.let { restoreMessage(it) }
 
     @Query("SELECT * FROM conversation_context_checkpoints WHERE conversation_id = :conversationId")
     suspend fun contextCheckpointRow(conversationId: String): ConversationContextCheckpointEntity?

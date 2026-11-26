@@ -1,80 +1,71 @@
 package io.github.mangi.eta.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import io.github.mangi.eta.data.model.AppearanceTopBarBlurStyle
-import io.github.mangi.eta.ui.app.LocalBlurEnabled
-import io.github.mangi.eta.ui.app.LocalTopBarBlurStyle
+import androidx.compose.ui.unit.dp
+import io.github.mangi.eta.ui.app.LocalAppearanceSettings
+import io.github.mangi.eta.ui.layout.TopBarBackdropLayout
+import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
-import top.yukonga.miuix.kmp.blur.BlurColors
-import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
-import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.blur.textureBlur
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.glass.GlassTopAppBarDefaults
+import top.yukonga.miuix.kmp.material.isRuntimeShaderSupported
 
 @Composable
-internal fun rememberTopBarBackdrop(): LayerBackdrop? {
-    if (!LocalBlurEnabled.current || !isRuntimeShaderSupported()) return null
-    val surfaceColor = MiuixTheme.colorScheme.surface
-    return rememberLayerBackdrop {
-        drawRect(surfaceColor)
-        drawContent()
-    }
-}
+internal fun progressiveTopBarBackdrop(backdrop: Backdrop?): Backdrop? =
+    backdrop.takeIf { LocalAppearanceSettings.current.progressiveBlurEnabled && isRuntimeShaderSupported() }
 
 @Composable
 internal fun TopBarBackdrop(
-    backdrop: LayerBackdrop?,
+    progressiveBackdrop: Backdrop?,
+    backgroundColor: Color,
+    fallbackBrush: Brush,
+    modifier: Modifier = Modifier,
+    captureModifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val surfaceColor = MiuixTheme.colorScheme.surface
-    val modifier = when {
-        backdrop == null -> Modifier.background(surfaceColor)
-        LocalTopBarBlurStyle.current == AppearanceTopBarBlurStyle.PROGRESSIVE -> {
-            Modifier.progressiveTextureBlur(
-                backdrop = backdrop,
-                shape = RectangleShape,
-                gradient = ProgressiveBlur.Top.copy(curve = 2.2f),
-                blurRadius = ProgressiveTopBarBlurRadius,
-                colors = BlurColors(
-                    blendColors = listOf(
-                        BlendColorEntry(surfaceColor.copy(alpha = ProgressiveTopBarSurfaceAlpha)),
-                    ),
-                ),
+    val background = if (progressiveBackdrop != null) {
+        val tint = remember(backgroundColor) { listOf(BlendColorEntry(backgroundColor.copy(alpha = 0.2f))) }
+        val scrimBrush = remember(backgroundColor) {
+            Brush.verticalGradient(
+                0f to backgroundColor.copy(alpha = 0.50f),
+                0.25f to backgroundColor.copy(alpha = 0.44f),
+                0.5f to backgroundColor.copy(alpha = 0.32f),
+                0.75f to backgroundColor.copy(alpha = 0.16f),
+                0.9f to backgroundColor.copy(alpha = 0.05f),
+                1f to Color.Transparent,
             )
         }
-        else -> {
-            Modifier.textureBlur(
-                backdrop = backdrop,
+        captureModifier
+            .progressiveTextureBlur(
+                backdrop = progressiveBackdrop,
                 shape = RectangleShape,
-                blurRadius = TopBarBlurRadius,
-                colors = BlurColors(
-                    blendColors = listOf(
-                        BlendColorEntry(surfaceColor.copy(alpha = TopBarSurfaceAlpha)),
-                    ),
-                ),
+                gradient = ProgressiveBlur.Top.copy(curve = 0.25f),
+                blurRadius = GlassTopAppBarDefaults.ProgressiveBlurRadius.value,
+                colors = BlurDefaults.blurColors(blendColors = tint),
             )
-        }
+            .drawWithContent {
+                drawContent()
+                drawRect(brush = scrimBrush)
+            }
+    } else {
+        Modifier.background(fallbackBrush)
     }
-    Box(modifier = modifier) { content() }
+    TopBarBackdropLayout(
+        modifier = modifier,
+        backgroundHeight = { height ->
+            if (progressiveBackdrop != null) height + 20.dp.roundToPx()
+            else height + GlassTopAppBarDefaults.BandOverhang.roundToPx()
+        },
+        backgroundModifier = background,
+        content = content,
+    )
 }
-
-internal fun Modifier.captureForTopBar(backdrop: LayerBackdrop?): Modifier =
-    if (backdrop == null) this else layerBackdrop(backdrop)
-
-@Composable
-internal fun topBarContainerColor(backdrop: LayerBackdrop?): Color =
-    if (backdrop == null) MiuixTheme.colorScheme.surface else Color.Transparent
-
-private const val TopBarBlurRadius = 25f
-private const val TopBarSurfaceAlpha = 0.8f
-private const val ProgressiveTopBarBlurRadius = 10f
-private const val ProgressiveTopBarSurfaceAlpha = 0.3f

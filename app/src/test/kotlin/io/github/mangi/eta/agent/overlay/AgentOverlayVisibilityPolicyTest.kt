@@ -1,7 +1,7 @@
 package io.github.mangi.eta.agent.overlay
 
-import io.github.mangi.eta.agent.runtime.AgentEvent
-import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
+import io.github.mangi.eta.agent.runtime.ipc.AgentEvent
+import io.github.mangi.eta.agent.runtime.ipc.AgentRuntimeWire
 import io.github.mangi.eta.agent.runtime.GuiControlStatus
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -78,7 +78,7 @@ class AgentOverlayVisibilityPolicyTest {
         )
         assertFalse(
             AgentOverlayVisibilityPolicy.shouldSuppressOverlayInEtaUi(
-                handoffSource = "breeno",
+                handoffSource = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
                 etaUiInForeground = true,
             ),
         )
@@ -100,14 +100,14 @@ class AgentOverlayVisibilityPolicyTest {
         assertTrue(
             AgentOverlayVisibilityPolicy.shouldShowResultCard(
                 hasExecutedForegroundTool = true,
-                handoffSource = "xiaoai",
+                handoffSource = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
                 etaUiInForeground = true,
             ),
         )
         assertFalse(
             AgentOverlayVisibilityPolicy.shouldShowResultCard(
                 hasExecutedForegroundTool = false,
-                handoffSource = "xiaoai",
+                handoffSource = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
                 etaUiInForeground = false,
             ),
         )

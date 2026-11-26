@@ -3,10 +3,10 @@ package io.github.mangi.eta.agent.voice
 import io.github.mangi.eta.data.model.TtsProvider
 import io.github.mangi.eta.data.model.SpeechSettings
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
-import io.github.mangi.eta.ui.voice.openSpeechSettings
-import io.github.mangi.eta.ui.voice.SpeechPlaybackErrors
-import io.github.mangi.eta.ui.voice.LocalSpeechPlayback
-import io.github.mangi.eta.ui.voice.LocalSpeechPlaybackEnabled
+import io.github.mangi.eta.ui.components.openSpeechSettings
+import io.github.mangi.eta.ui.components.SpeechPlaybackErrors
+import io.github.mangi.eta.ui.components.LocalSpeechPlayback
+import io.github.mangi.eta.ui.components.LocalSpeechPlaybackEnabled
 import android.os.PowerManager
 import android.Manifest
 import android.app.ActivityOptions
@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -28,14 +29,15 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
@@ -47,24 +49,23 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.mangi.eta.R
-import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.model.provider.AgentModelClient
 import io.github.mangi.eta.agent.overlay.AgentOverlayVisibilityPolicy
-import io.github.mangi.eta.agent.runtime.AgentEvent
-import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
-import io.github.mangi.eta.agent.runtime.AgentRuntimeClient
-import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
+import io.github.mangi.eta.agent.runtime.ipc.AgentEvent
+import io.github.mangi.eta.agent.runtime.archive.AgentExternalArchivePayload
+import io.github.mangi.eta.agent.runtime.ipc.AgentRuntimeClient
+import io.github.mangi.eta.agent.runtime.ipc.AgentRuntimeWire
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.model.AppearanceSettings
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.ui.MainActivity
+import io.github.mangi.eta.ui.conversationHandoffStartMode
 import io.github.mangi.eta.ui.app.AgentAppTheme
-import io.github.mangi.eta.ui.app.AgentRunEventCoalescer
-import io.github.mangi.eta.ui.app.AgentRunMessageProjector
+import io.github.mangi.eta.ui.state.AgentRunEventCoalescer
+import io.github.mangi.eta.ui.state.AgentRunMessageProjector
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
-import io.github.mangi.eta.ui.model.ThinkingMessageUi
-import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -80,6 +81,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.squircle.LocalSquircleEnabled
+import io.github.mangi.eta.agent.voice.ui.EtaSpeechPhase
+import io.github.mangi.eta.agent.voice.ui.EtaSpeechState
+import io.github.mangi.eta.agent.voice.ui.EtaVoicePanel
+import io.github.mangi.eta.agent.voice.ui.EtaVoicePhase
+import io.github.mangi.eta.agent.voice.ui.EtaVoiceUiState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import io.github.mangi.eta.agent.voice.asr.SpeechInputController
+import io.github.mangi.eta.agent.voice.tts.SpeechPlaybackController
 
 /**
  * Eta 数字助理的用户界面窗口。
@@ -134,6 +144,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var activeRunId: String? = null
     private var entryGeneration = 0L
     private var presentedEntryGeneration = -1L
+    @Volatile
+    private var entryShownUptimeMs = 0L
     private var entryInputPending = false
     private var entryEntranceComplete by mutableStateOf(false)
     private var entryContentReady = false
@@ -141,7 +153,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var hiddenForForegroundOperation = false
     private var handoffInProgress by mutableStateOf(false)
     private var handoffExitRequested by mutableStateOf(false)
-    private var inputText by mutableStateOf("")
+    private val inputText = TextFieldState()
     private var inputFocusRequestKey by mutableIntStateOf(-1)
     private var uiState by mutableStateOf(EtaVoiceUiState())
 
@@ -170,7 +182,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         scope.launch(Dispatchers.Main.immediate) {
             speechInput.state.collect { state ->
                 speechLevel = state.level
-                if (state.preview.isNotBlank()) inputText = state.preview
+                if (state.preview.isNotBlank() && state.preview != inputText.text.toString()) {
+                    inputText.setTextAndPlaceCursorAtEnd(state.preview)
+                }
                 speechState = EtaSpeechState(
                     phase = state.phase,
                     // 连接、聆听、识别中的阶段播报由语音条目与波形承担，反馈条只保留错误提示，
@@ -198,6 +212,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
 
     override fun onDestroy() {
         entryGeneration++
+        entryShownUptimeMs = 0L
         EtaAssistantScreenContexts.release(entryScreenContext?.id)
         entryScreenContext = null
         cancelCurrentRun()
@@ -218,6 +233,16 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             stopSelf()
             return
         }
+        // 长按电源键的按下/松开或双路派发可能跨越 1s 去重窗后再次到达，
+        // 浮窗仍处于刚唤起的初始空闲态时直接合并，避免重建窗口重播入场光效。
+        if (isFreshVisibleEntry()) {
+            if (entryScreenContext == null && screenContextId != null) {
+                entryScreenContext = EtaAssistantScreenContexts.find(screenContextId)
+            } else if (entryScreenContext?.id != screenContextId) {
+                EtaAssistantScreenContexts.release(screenContextId)
+            }
+            return
+        }
         dismissalJob?.cancel()
         dismissalJob = null
         cancelCurrentRun()
@@ -232,7 +257,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         entryEntranceComplete = false
         entryContentReady = false
         inputFocusRequestKey = -1
-        inputText = ""
+        inputText.clearText()
         uiState = EtaVoiceUiState()
         hiddenForForegroundOperation = false
         handoffInProgress = false
@@ -245,11 +270,27 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         presentedEntryGeneration = generation
         showWindow()
         if (windowView == null) {
+            entryShownUptimeMs = 0L
             stopSelf()
             return
         }
+        entryShownUptimeMs = SystemClock.uptimeMillis()
         presentEntryInput()
     }
+
+    private fun isFreshVisibleEntry(nowUptimeMs: Long = SystemClock.uptimeMillis()): Boolean =
+        shouldCoalesceFreshEntry(
+            hasWindow = windowView != null,
+            isDetaching = detachingWindowView != null,
+            isDismissing = dismissalJob != null,
+            hiddenForForegroundOperation = hiddenForForegroundOperation,
+            handoffInProgress = handoffInProgress,
+            handoffExitRequested = handoffExitRequested,
+            hasActiveRun = activeRunId != null,
+            hasMessages = uiState.messages.isNotEmpty(),
+            entryShownUptimeMs = entryShownUptimeMs,
+            nowUptimeMs = nowUptimeMs,
+        )
 
     private fun presentEntryInput() {
         if (!entryInputPending || windowView == null || activeRunId != null) return
@@ -284,7 +325,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             return
         }
         inputFocusRequestKey = -1
-        inputText = ""
+        inputText.clearText()
         updateSoftInput(visible = false)
         windowView?.let { view ->
             (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
@@ -315,10 +356,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         val view = createComposeView {
             val appearance by AppearanceSettingsRepository.settingsFlow()
-                .collectAsState(initial = AppearanceSettings())
+                .collectAsStateWithLifecycle(initialValue = AppearanceSettings())
             AgentAppTheme(
                 appearance = appearance,
-                applyInterfaceScale = false,
             ) {
                 // ColorOS 在 Overlay 窗口切换期间可能短暂使用软件画布；RuntimeShader
                 // 无法在该画布绘制，因此浮窗统一使用 Miuix 的圆角回退路径。
@@ -360,8 +400,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                         onKeyboard = ::switchToKeyboard,
                         input = inputText,
                         inputFocusRequestKey = inputFocusRequestKey,
-                        onInputChange = {
-                            inputText = it
+                        onInputEdited = {
                             if (!speechState.active && speechState.hasFeedback) {
                                 speechState = EtaSpeechState()
                             }
@@ -381,13 +420,16 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                 }
             }
         }
+        // 窗口由 Service 通过 WindowManager 挂载，Activity.setShowWhenLocked 无法作用于该窗口。
+        @Suppress("DEPRECATION")
+        val showWhenLocked = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                showWhenLocked or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS,
@@ -459,7 +501,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     }
 
     private fun submitInput() {
-        val prompt = inputText.trim()
+        val prompt = inputText.text.toString().trim()
         if (prompt.isBlank() || activeRunId != null) return
         submitPrompt(prompt)
     }
@@ -475,7 +517,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         speechState = EtaSpeechState()
         playback.stop()
         val capture = entryScreenContext
-        inputText = ""
+        inputText.clearText()
         activeRunId = UUID.randomUUID().toString()
         val runId = activeRunId ?: return
         uiState = uiState.copy(
@@ -504,6 +546,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     config = config.copy(supportsSearchSuggestions = true),
                     images = runImages,
                     history = conversationHistory,
+                    modelSessionId = conversationKey,
                     handoff = AgentRuntimeWire.EntryHandoff(
                         id = "$conversationKey:$runId",
                         source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
@@ -627,7 +670,12 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         }
         val notice = when {
             result.ok && result.content.isBlank() -> SystemNoticeCode.EmptyResult
-            !result.ok && result.error == LEGACY_STOPPED_ERROR -> SystemNoticeCode.Stopped
+            !result.ok && (
+                result.error == LEGACY_STOPPED_ERROR ||
+                    result.error == SYNTHETIC_STOPPED ||
+                    result.error == "Stopped" ||
+                    result.error == getString(R.string.runtime_err_stopped)
+                ) -> SystemNoticeCode.Stopped
             !result.ok -> SystemNoticeCode.RuntimeFailed
             else -> null
         }
@@ -703,6 +751,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     }
 
     private fun removeWindow(onComplete: ((Boolean) -> Unit)? = null) {
+        entryShownUptimeMs = 0L
         entryInputPending = false
         playback.stop()
         speechInput.cancel()
@@ -802,12 +851,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             )
         val creatorOptions = ActivityOptions.makeBasic().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                pendingIntentCreatorBackgroundActivityStartMode =
-                    if (Build.VERSION.SDK_INT >= 36) {
-                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
-                    } else {
-                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                    }
+                pendingIntentCreatorBackgroundActivityStartMode = conversationHandoffStartMode()
             }
         }
         val pendingIntent = PendingIntent.getActivity(
@@ -818,14 +862,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             creatorOptions.toBundle(),
         )
         val senderOptions = ActivityOptions.makeBasic().apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                pendingIntentBackgroundActivityStartMode =
-                    if (Build.VERSION.SDK_INT >= 36) {
-                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
-                    } else {
-                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                    }
-            }
+            pendingIntentBackgroundActivityStartMode = conversationHandoffStartMode()
         }
         runCatching { pendingIntent.send(this, 0, null, null, null, null, senderOptions.toBundle()) }
             .onFailure {
@@ -868,10 +905,34 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         private const val SYNTHETIC_STOPPED = "eta_status:stopped"
         private const val SYNTHETIC_RUNTIME_FAILED = "eta_status:runtime_failed"
         private const val FOREGROUND_DISMISS_TIMEOUT_MS = 2_000L
+        internal const val FRESH_ENTRY_COALESCE_WINDOW_MS = 5_000L
         private val mainHandler = Handler(Looper.getMainLooper())
 
         @Volatile
         private var activeService: EtaAssistantOverlayService? = null
+
+        fun hasFreshVisibleEntry(nowUptimeMs: Long = SystemClock.uptimeMillis()): Boolean =
+            activeService?.isFreshVisibleEntry(nowUptimeMs) == true
+
+        internal fun shouldCoalesceFreshEntry(
+            hasWindow: Boolean,
+            isDetaching: Boolean,
+            isDismissing: Boolean,
+            hiddenForForegroundOperation: Boolean,
+            handoffInProgress: Boolean,
+            handoffExitRequested: Boolean,
+            hasActiveRun: Boolean,
+            hasMessages: Boolean,
+            entryShownUptimeMs: Long,
+            nowUptimeMs: Long,
+            coalesceWindowMs: Long = FRESH_ENTRY_COALESCE_WINDOW_MS,
+        ): Boolean {
+            if (!hasWindow || isDetaching || isDismissing) return false
+            if (hiddenForForegroundOperation || handoffInProgress || handoffExitRequested) return false
+            if (hasActiveRun || hasMessages) return false
+            if (entryShownUptimeMs <= 0L) return false
+            return nowUptimeMs - entryShownUptimeMs in 0L..coalesceWindowMs
+        }
 
         /**
          * Eta 自己拥有入口浮层，直接关闭并等待具体 View detach；不能按包名猜测，

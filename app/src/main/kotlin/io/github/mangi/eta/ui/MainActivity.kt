@@ -3,17 +3,20 @@ package io.github.mangi.eta.ui
 import android.app.UiModeManager
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import io.github.mangi.eta.agent.runtime.AgentRuntimeService
 import io.github.mangi.eta.agent.voice.EtaAssistantOverlayService
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -37,6 +40,13 @@ class MainActivity : ComponentActivity() {
         var contentReady = false
         installStartupSplash { contentReady }
         enableEdgeToEdge()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AgentRuntimeService.keepScreenOn.collect { enabled ->
+                    if (enabled) window.addFlags(FLAG_KEEP_SCREEN_ON) else window.clearFlags(FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
         launchRequests = MainActivityLaunchRequests.restore(savedInstanceState, intent)
         /* 重建时只还原已保存的预填草稿，不重新解析启动 Intent，避免重复预填。 */
         lifecycleScope.launch {
@@ -44,7 +54,7 @@ class MainActivity : ComponentActivity() {
             appliedPredictiveBackEnabled = initialAppearance.predictiveBackEnabled
             setContent {
                 val appearance by AppearanceSettingsRepository.settingsFlow()
-                    .collectAsState(initial = initialAppearance)
+                    .collectAsStateWithLifecycle(initialValue = initialAppearance)
 
                 LaunchedEffect(appearance.themeMode) {
                     updateApplicationNightMode(appearance.themeMode)
@@ -62,7 +72,7 @@ class MainActivity : ComponentActivity() {
 
                 AgentAppTheme(
                     appearance = appearance,
-                    applyInterfaceScale = true,
+                    provideGlassHost = true,
                     onResolvedDarkModeChange = ::updateSystemBars,
                 ) {
                     AgentAppRoot(
@@ -75,6 +85,11 @@ class MainActivity : ComponentActivity() {
                         requestedArchivedConversation = launchRequests.archivedConversation,
                         onArchivedConversationOpened = {
                             launchRequests = launchRequests.copy(archivedConversation = null)
+                            intent?.action = null
+                        },
+                        requestedScheduledTaskId = launchRequests.scheduledTaskId,
+                        onScheduledTaskOpened = {
+                            launchRequests = launchRequests.copy(scheduledTaskId = null)
                             intent?.action = null
                         },
                         sharedContent = launchRequests.sharedContent,
@@ -114,6 +129,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        window.clearFlags(FLAG_KEEP_SCREEN_ON)
         startedInstances.remove(this)
         isInForeground = startedInstances.isNotEmpty() || isChangingConfigurations
         AgentRuntimeService.onEtaUiVisibilityChanged()
@@ -196,5 +212,7 @@ class MainActivity : ComponentActivity() {
         const val ACTION_OPEN_ARCHIVED_CONVERSATION = "io.github.mangi.eta.action.OPEN_ARCHIVED_CONVERSATION"
         const val EXTRA_HANDOFF_SOURCE = "io.github.mangi.eta.extra.HANDOFF_SOURCE"
         const val EXTRA_CONVERSATION_KEY = "io.github.mangi.eta.extra.CONVERSATION_KEY"
+        const val ACTION_OPEN_SCHEDULED_TASK_DETAIL = "io.github.mangi.eta.action.OPEN_SCHEDULED_TASK_DETAIL"
+        const val EXTRA_SCHEDULED_TASK_ID = "io.github.mangi.eta.extra.SCHEDULED_TASK_ID"
     }
 }

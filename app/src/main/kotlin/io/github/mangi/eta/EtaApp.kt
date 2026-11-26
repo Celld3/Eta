@@ -1,45 +1,27 @@
 package io.github.mangi.eta
 
-import io.github.mangi.eta.agent.voice.SpeechOssUpload
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.os.Handler
 import android.os.Looper
-import io.github.mangi.eta.agent.skill.SkillRuntime
-import io.github.mangi.eta.agent.browser.BrowserSessionRegistry
-import io.github.mangi.eta.agent.device.RootAccess
-import io.github.mangi.eta.agent.terminal.TerminalRuntime
-import io.github.mangi.eta.config.Prefs
-import io.github.mangi.eta.core.AndroidAgentLogger
-import io.github.mangi.eta.core.safeLogType
-import io.github.mangi.eta.data.backup.AutoBackupScheduler
-import io.github.mangi.eta.data.datastore.SettingsDataStore
-import io.github.mangi.eta.data.repository.AgentMemoryRepository
-import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
-import io.github.mangi.eta.data.repository.McpServerRepository
-import io.github.mangi.eta.data.repository.LinuxEnvironmentSettingsRepository
-import io.github.mangi.eta.data.repository.ProviderRepository
-import io.github.mangi.eta.ui.app.PredictiveBackController
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
+import io.github.mangi.eta.agent.browser.BrowserSessionRegistry
+import io.github.mangi.eta.config.Prefs
+import io.github.mangi.eta.core.AppStrings
 import java.util.concurrent.CopyOnWriteArraySet
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * 模块 UI 进程的 Application。
  *
  * 在进程启动时注册 [XposedServiceHelper] 监听器，框架会通过 XposedProvider 推送 binder，
  * 随后 UI 即可拿到 [XposedService] 写入 RemotePreferences，跨进程同步到各 hook 进程。
- *
- * UI 侧通过 [XposedService] 写入 RemotePreferences。
  */
 class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
 
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** 仅主进程创建；`:voice` / `:recognition` 等辅助进程保持为 null。 */
+    internal var container: AppContainer? = null
+        private set
 
     interface ServiceStateListener {
         fun onServiceStateChanged(service: XposedService?)
@@ -47,63 +29,20 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
 
     override fun onCreate() {
         super.onCreate()
+        AppStrings.init(this)
         Prefs.initLocal(this)
         if (!AppProcessPolicy.shouldInitializeFullRuntime(Application.getProcessName(), packageName)) {
             return
         }
-        TerminalRuntime.initialize(this)
-        RootAccess.initialize(this)
-        applicationScope.launch { TerminalRuntime.backgroundJobs(this@EtaApp).resume() }
-        SettingsDataStore.init(this)
-        val predictiveBackEnabled = runBlocking(Dispatchers.IO) {
-            AppearanceSettingsRepository.settings().predictiveBackEnabled
-        }
-        PredictiveBackController.apply(applicationInfo, predictiveBackEnabled)
-        AgentMemoryRepository.init(this)
-        ProviderRepository.init(this)
-        McpServerRepository.init(this)
+        container = AppContainer(this).also(AppContainer::initialize)
         XposedServiceHelper.registerListener(this)
-        applicationScope.launch {
-            try {
-                SpeechOssUpload(this@EtaApp).retryPending(this@EtaApp)
-            } catch (error: Exception) {
-                if (error is kotlinx.coroutines.CancellationException) throw error
-                AndroidAgentLogger.warn("Eta speech cleanup unavailable: type=${error.javaClass.simpleName}")
-            }
-        }
-        applicationScope.launch {
-            LinuxEnvironmentSettingsRepository.initialize(this@EtaApp)
-            runCatching {
-                SkillRuntime.createIndexService(this@EtaApp).listInstalledSkills()
-            }.onFailure { throwable ->
-                AndroidAgentLogger.warn(
-                    "Agent skill index prewarm failed: type=${throwable.safeLogType()}"
-                )
-            }
-        }
-        // 闹钟队列不跨重启与崩溃保留，每次启动重建一次，保证自动备份不会静默停摆。
-        applicationScope.launch {
-            runCatching { AutoBackupScheduler.schedule(this@EtaApp) }
-                .onFailure { throwable ->
-                    AndroidAgentLogger.warn(
-                        "Agent auto backup schedule failed: type=${throwable.safeLogType()}"
-                    )
-                }
-        }
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
-            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
-            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
             BrowserSessionRegistry.releaseIdlePages()
         }
-    }
-
-    override fun onLowMemory() {
-        super.onLowMemory()
-        BrowserSessionRegistry.releaseIdlePages()
     }
 
     override fun onServiceBind(service: XposedService) {

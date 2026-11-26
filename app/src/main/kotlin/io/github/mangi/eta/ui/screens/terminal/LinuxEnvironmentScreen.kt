@@ -4,12 +4,9 @@ import android.content.Context
 import android.text.format.Formatter
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,51 +16,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
-import io.github.mangi.eta.agent.terminal.AlpineEnvironmentInstaller
-import io.github.mangi.eta.agent.terminal.AlpineEnvironmentState
-import io.github.mangi.eta.agent.terminal.AlpineInstallProgress
-import io.github.mangi.eta.agent.terminal.AlpineInstallResult
-import io.github.mangi.eta.agent.terminal.AlpineInstallStage
-import io.github.mangi.eta.agent.terminal.ApkAnalysisInstallProgress
-import io.github.mangi.eta.agent.terminal.ApkAnalysisInstallResult
-import io.github.mangi.eta.agent.terminal.ApkAnalysisInstallStage
-import io.github.mangi.eta.agent.terminal.DebianEnvironmentInstaller
-import io.github.mangi.eta.agent.terminal.DebianEnvironmentState
-import io.github.mangi.eta.agent.terminal.DebianInstallProgress
-import io.github.mangi.eta.agent.terminal.DebianInstallResult
-import io.github.mangi.eta.agent.terminal.DebianInstallStage
-import io.github.mangi.eta.agent.terminal.DetachedTaskSupervisor
-import io.github.mangi.eta.agent.terminal.LinuxApkAnalysisInstaller
+import io.github.mangi.eta.agent.terminal.linux.AlpineEnvironmentInstaller
+import io.github.mangi.eta.agent.terminal.linux.AlpineEnvironmentState
+import io.github.mangi.eta.agent.terminal.linux.AlpineInstallProgress
+import io.github.mangi.eta.agent.terminal.linux.AlpineInstallResult
+import io.github.mangi.eta.agent.terminal.linux.AlpineInstallStage
+import io.github.mangi.eta.agent.terminal.linux.ApkAnalysisInstallProgress
+import io.github.mangi.eta.agent.terminal.linux.ApkAnalysisInstallResult
+import io.github.mangi.eta.agent.terminal.linux.ApkAnalysisInstallStage
+import io.github.mangi.eta.agent.terminal.linux.DebianEnvironmentInstaller
+import io.github.mangi.eta.agent.terminal.linux.DebianEnvironmentState
+import io.github.mangi.eta.agent.terminal.linux.DebianInstallProgress
+import io.github.mangi.eta.agent.terminal.linux.DebianInstallResult
+import io.github.mangi.eta.agent.terminal.linux.DebianInstallStage
+import io.github.mangi.eta.agent.terminal.linux.LinuxApkAnalysisInstaller
 import io.github.mangi.eta.agent.terminal.LinuxDistribution
-import io.github.mangi.eta.agent.terminal.LinuxEnvironmentPaths
 import io.github.mangi.eta.agent.terminal.LinuxExecutionBackend
-import io.github.mangi.eta.agent.terminal.LinuxPackageProfile
-import io.github.mangi.eta.agent.terminal.LinuxPackageProfileInstaller
-import io.github.mangi.eta.agent.terminal.LinuxPackageProfiles
-import io.github.mangi.eta.agent.terminal.PackageProfileInstallProgress
-import io.github.mangi.eta.agent.terminal.PackageProfileInstallResult
-import io.github.mangi.eta.agent.terminal.PackageProfileInstallStage
-import io.github.mangi.eta.agent.terminal.SharedFolderMounts
-import io.github.mangi.eta.agent.terminal.terminalEnvironment
-import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Group
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text as CouiText
-import io.github.mangi.eta.core.AndroidAgentLogger
-import io.github.mangi.eta.data.model.AppearanceUiStyle
+import io.github.mangi.eta.agent.terminal.linux.LinuxPackageProfile
+import io.github.mangi.eta.agent.terminal.linux.LinuxPackageProfileInstaller
+import io.github.mangi.eta.agent.terminal.linux.LinuxPackageProfiles
+import io.github.mangi.eta.agent.terminal.linux.PackageProfileInstallProgress
+import io.github.mangi.eta.agent.terminal.linux.PackageProfileInstallResult
+import io.github.mangi.eta.agent.terminal.linux.PackageProfileInstallStage
 import io.github.mangi.eta.data.repository.LinuxEnvironmentSettingsRepository
-import io.github.mangi.eta.ui.app.KimiWebLaunchResult
-import io.github.mangi.eta.ui.app.KimiWebLauncher
-import io.github.mangi.eta.ui.app.LocalUiStyle
 import io.github.mangi.eta.ui.app.launchForegroundExecution
-import io.github.mangi.eta.ui.app.message
-import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
+import io.github.mangi.eta.ui.state.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.app.rememberExecutionNotificationRequest
-import io.github.mangi.eta.ui.components.MiuixScaffoldPage
-import io.github.mangi.eta.ui.components.coui.CouiButton
-import io.github.mangi.eta.ui.components.coui.CouiLazyScaffoldPage
-import io.github.mangi.eta.ui.components.coui.CouiPreference
+import io.github.mangi.eta.ui.components.ScaffoldPage
 import io.github.mangi.eta.ui.navigation.AppRoute
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -81,7 +60,6 @@ private enum class InstallTarget {
     PYTHON,
     NODE,
     SSH,
-    KIMI,
 }
 
 private data class PackageProfileUi(
@@ -118,13 +96,6 @@ private val packageProfileUis = listOf(
         summaryRes = R.string.linux_ssh_tools_summary,
         readyRes = R.string.linux_ssh_tools_ready,
     ),
-    PackageProfileUi(
-        target = InstallTarget.KIMI,
-        profile = LinuxPackageProfiles.KIMI,
-        titleRes = R.string.linux_kimi_tools,
-        summaryRes = R.string.linux_kimi_tools_summary,
-        readyRes = R.string.linux_kimi_tools_ready,
-    ),
 )
 
 @Composable
@@ -140,14 +111,12 @@ internal fun LinuxEnvironmentScreen(
     val selectionFlow = remember(appContext) {
         LinuxEnvironmentSettingsRepository.selectedFlow(appContext)
     }
-    val selectedDistribution by selectionFlow.collectAsState(
-        initial = LinuxEnvironmentSettingsRepository.current(appContext),
+    val selectedDistribution by selectionFlow.collectAsStateWithLifecycle(initialValue = LinuxEnvironmentSettingsRepository.current(appContext),
     )
     val backendFlow = remember(appContext, selectedDistribution, capabilities.root.isGranted) {
         LinuxEnvironmentSettingsRepository.backendFlow(appContext, selectedDistribution)
     }
-    val backend by backendFlow.collectAsState(
-        initial = LinuxEnvironmentSettingsRepository.backend(appContext, selectedDistribution),
+    val backend by backendFlow.collectAsStateWithLifecycle(initialValue = LinuxEnvironmentSettingsRepository.backend(appContext, selectedDistribution),
     )
     val requiresRoot = backend == LinuxExecutionBackend.CHROOT && !capabilities.root.isGranted
     val installer = remember(appContext, backend) { AlpineEnvironmentInstaller(appContext) }
@@ -178,28 +147,6 @@ internal fun LinuxEnvironmentScreen(
         mutableStateOf(apkAnalysisInstaller.isReady())
     }
     var apkAnalysisProgress by remember { mutableStateOf<ApkAnalysisInstallProgress?>(null) }
-    var kimiWebLaunching by remember { mutableStateOf(false) }
-    var kimiWebRunning by remember(selectedDistribution, backend) { mutableStateOf(false) }
-    val kimiWebLauncher = remember(appContext) {
-        KimiWebLauncher(
-            context = appContext,
-            daemonSupervisor = DetachedTaskSupervisor(
-                logger = AndroidAgentLogger,
-                recordsFile = DetachedTaskSupervisor.defaultRecordsFile(appContext),
-                linuxRootfsPathProvider = { environment ->
-                    environment.linuxDistribution?.let { distribution ->
-                        LinuxEnvironmentPaths.rootfsDir(appContext, distribution).absolutePath
-                    }
-                },
-                linuxSharedMountsProvider = { SharedFolderMounts.current() },
-            ),
-        )
-    }
-    LaunchedEffect(selectedDistribution, backend, kimiWebLaunching) {
-        if (!kimiWebLaunching) {
-            kimiWebRunning = kimiWebLauncher.status(selectedDistribution.terminalEnvironment).running
-        }
-    }
     val selectedBaseReady = when (selectedDistribution) {
         LinuxDistribution.ALPINE -> status.state != AlpineEnvironmentState.NOT_INSTALLED
         LinuxDistribution.DEBIAN -> debianStatus.state != DebianEnvironmentState.NOT_INSTALLED
@@ -282,23 +229,10 @@ internal fun LinuxEnvironmentScreen(
         }
     }
 
-    /** Kimi 就绪后按钮变为启动 Web UI：守护任务常驻 kimi web，解析地址后拉起浏览器。 */
-    fun launchKimiWeb() {
-        if (kimiWebLaunching || requiresRoot) return
-        requestExecutionNotifications()
-        kimiWebLaunching = true
-        resultMessage = null
-        coroutineScope.launch {
-            val result = kimiWebLauncher.launch(selectedDistribution.terminalEnvironment)
-            kimiWebLaunching = false
-            if (result is KimiWebLaunchResult.Failed) {
-                resultMessage = result.message(context)
-            }
-        }
-    }
-
-    val uiStyle = LocalUiStyle.current
-    val listContent: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
+    ScaffoldPage(
+        title = stringResource(R.string.ui_linux_tool_environment_314d22),
+        onBack = onBack,
+    ) {
         item(key = "status-card") {
             val version = when (selectedDistribution) {
                 LinuxDistribution.ALPINE -> status.version
@@ -318,7 +252,6 @@ internal fun LinuxEnvironmentScreen(
                 mode = backend.displayName(),
                 summary = when {
                     requiresRoot -> stringResource(R.string.capability_linux_root_lost)
-                    kimiWebLaunching -> stringResource(R.string.linux_kimi_web_starting)
                     busyTarget != null -> activeProgress ?: stringResource(R.string.linux_installing)
                     selectedToolsReady -> stringResource(R.string.linux_environment_tools_ready)
                     selectedBaseReady -> stringResource(R.string.linux_environment_base_ready)
@@ -330,7 +263,7 @@ internal fun LinuxEnvironmentScreen(
                         },
                     )
                 },
-                busy = busyTarget != null || kimiWebLaunching,
+                busy = busyTarget != null,
                 message = resultMessage,
                 actionText = when {
                     requiresRoot -> stringResource(R.string.capability_enhancements)
@@ -339,7 +272,7 @@ internal fun LinuxEnvironmentScreen(
                     selectedBaseReady -> stringResource(R.string.linux_install_base_tools)
                     else -> stringResource(R.string.linux_install_base)
                 },
-                actionEnabled = busyTarget == null && !kimiWebLaunching,
+                actionEnabled = busyTarget == null,
                 onAction = {
                     if (requiresRoot) onNavigate(AppRoute.SystemEnhance)
                     else if (selectedBaseReady) installTools() else installBase()
@@ -347,24 +280,22 @@ internal fun LinuxEnvironmentScreen(
             )
         }
         item(key = "configuration-title") {
-            if (uiStyle != AppearanceUiStyle.COUI) {
-                SmallTitle(stringResource(R.string.linux_environment_configuration))
-            }
+            SmallTitle(stringResource(R.string.linux_environment_configuration))
         }
         item(key = "configuration-card") {
             LinuxEnvironmentConfiguration(
                 distribution = selectedDistribution,
                 backend = backend,
                 rootGranted = capabilities.root.isGranted,
-                enabled = busyTarget == null && !kimiWebLaunching,
+                enabled = busyTarget == null,
                 onDistributionSelected = { distribution ->
-                    if (busyTarget == null && !kimiWebLaunching && distribution != selectedDistribution) {
+                    if (busyTarget == null && distribution != selectedDistribution) {
                         resultMessage = null
                         coroutineScope.launch { LinuxEnvironmentSettingsRepository.select(distribution) }
                     }
                 },
                 onBackendSelected = { selectedBackend ->
-                    if (busyTarget == null && !kimiWebLaunching && selectedBackend != backend &&
+                    if (busyTarget == null && selectedBackend != backend &&
                         (selectedBackend == LinuxExecutionBackend.PROOT || capabilities.root.isGranted)
                     ) {
                         resultMessage = null
@@ -376,71 +307,47 @@ internal fun LinuxEnvironmentScreen(
             )
         }
         item(key = "files-title") {
-            if (uiStyle != AppearanceUiStyle.COUI) {
-                SmallTitle(stringResource(R.string.linux_environment_files))
-            }
+            SmallTitle(stringResource(R.string.linux_environment_files))
         }
         item(key = "files-card") {
-            if (uiStyle == AppearanceUiStyle.COUI) {
-                Group(title = stringResource(R.string.linux_environment_files)) {
-                    CouiPreference(
-                        title = stringResource(R.string.capability_workspace),
-                        summary = stringResource(R.string.capability_workspace_summary),
-                        onClick = { onNavigate(AppRoute.Workspace) },
-                    )
-                    if (selectedBaseReady) {
-                        Divider()
-                        CouiPreference(
-                            title = stringResource(R.string.shared_folders_entry_title),
-                            summary = stringResource(R.string.linux_environment_shared_folders_summary),
-                            onClick = { onNavigate(AppRoute.SharedFolders) },
-                        )
-                        Divider()
-                        CouiPreference(
-                            title = stringResource(R.string.linux_files_entry_title),
-                            summary = stringResource(R.string.linux_files_entry_summary),
-                            onClick = { onNavigate(AppRoute.LinuxFiles(selectedDistribution.wireName)) },
-                        )
-                    }
-                }
-            } else {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp),
-                ) {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp),
+            ) {
+                ArrowPreference(
+                    title = stringResource(R.string.capability_workspace),
+                    summary = stringResource(R.string.capability_workspace_summary),
+                    onClick = { onNavigate(AppRoute.Workspace) },
+                )
+                if (selectedBaseReady) {
                     ArrowPreference(
-                        title = stringResource(R.string.capability_workspace),
-                        summary = stringResource(R.string.capability_workspace_summary),
-                        onClick = { onNavigate(AppRoute.Workspace) },
+                        title = stringResource(R.string.shared_folders_entry_title),
+                        summary = stringResource(R.string.linux_environment_shared_folders_summary),
+                        onClick = { onNavigate(AppRoute.SharedFolders) },
                     )
-                    if (selectedBaseReady) {
-                        ArrowPreference(
-                            title = stringResource(R.string.shared_folders_entry_title),
-                            summary = stringResource(R.string.linux_environment_shared_folders_summary),
-                            onClick = { onNavigate(AppRoute.SharedFolders) },
-                        )
-                        ArrowPreference(
-                            title = stringResource(R.string.linux_files_entry_title),
-                            summary = stringResource(R.string.linux_files_entry_summary),
-                            onClick = { onNavigate(AppRoute.LinuxFiles(selectedDistribution.wireName)) },
-                        )
-                    }
+                    ArrowPreference(
+                        title = stringResource(R.string.linux_files_entry_title),
+                        summary = stringResource(R.string.linux_files_entry_summary),
+                        onClick = { onNavigate(AppRoute.LinuxFiles(selectedDistribution.wireName)) },
+                    )
                 }
             }
         }
 
         if (selectedToolsReady) {
             item(key = "optional-tools-title") {
-                if (uiStyle != AppearanceUiStyle.COUI) {
-                    SmallTitle(stringResource(R.string.ui_optional_tools_3097d6), modifier = Modifier.animateItem())
-                }
+                SmallTitle(stringResource(R.string.ui_optional_tools_3097d6), modifier = Modifier.animateItem())
             }
             item(key = "optional-tools-card") {
-                val optionalItemsContent: @Composable () -> Unit = {
-                    packageProfileUis.forEachIndexed { index, profileUi ->
+                Card(
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 12.dp),
+                ) {
+                    packageProfileUis.forEach { profileUi ->
                         val ready = profileReady[profileUi.target] == true
-                        val isKimi = profileUi.target == InstallTarget.KIMI
                         val summaryRes = if (selectedDistribution == LinuxDistribution.DEBIAN) {
                             profileUi.debianSummaryRes
                         } else {
@@ -460,28 +367,13 @@ internal fun LinuxEnvironmentScreen(
                             stringResource(summaryRes)
                         }
                         val primaryText = when {
-                            isKimi && ready -> stringResource(
-                                if (kimiWebLaunching) {
-                                    R.string.linux_kimi_web_starting
-                                } else if (kimiWebRunning) {
-                                    R.string.action_open
-                                } else {
-                                    R.string.linux_kimi_web_launch
-                                },
-                            )
                             ready -> stringResource(R.string.linux_installed)
                             busyTarget == profileUi.target -> stringResource(R.string.linux_installing)
                             else -> stringResource(R.string.linux_install)
                         }
-                        val primaryEnabled = !requiresRoot && if (isKimi && ready) {
-                            !kimiWebLaunching && busyTarget == null
-                        } else {
-                            busyTarget == null && !ready
-                        }
+                        val primaryEnabled = !requiresRoot && busyTarget == null && !ready
                         val onPrimaryClick: () -> Unit = {
-                            if (isKimi && ready) {
-                                launchKimiWeb()
-                            } else if (busyTarget == null && !ready) {
+                            if (busyTarget == null && !ready) {
                                 busyTarget = profileUi.target
                                 resultMessage = null
                                 val profileTitle = context.getString(profileUi.titleRes)
@@ -500,65 +392,20 @@ internal fun LinuxEnvironmentScreen(
                                 }
                             }
                         }
-                        val onStopKimi: () -> Unit = {
-                            coroutineScope.launch {
-                                val stopped = kimiWebLauncher.stop(selectedDistribution.terminalEnvironment)
-                                kimiWebRunning = !stopped
-                            }
-                        }
-                        if (uiStyle == AppearanceUiStyle.COUI) {
-                            CouiPreference(
-                                title = rowTitle,
-                                summary = rowSummary,
-                                showChevron = false,
-                                trailing = {
-                                    if (isKimi && kimiWebRunning) {
-                                        CouiButton(
-                                            text = stringResource(R.string.action_stop),
-                                            enabled = !kimiWebLaunching && !requiresRoot,
-                                            minHeight = 32.dp,
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                            onClick = onStopKimi,
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                    }
-                                    CouiButton(
-                                        text = primaryText,
-                                        enabled = primaryEnabled,
-                                        minHeight = 32.dp,
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        onClick = onPrimaryClick,
-                                    )
-                                },
-                            )
-                            Divider()
-                        } else {
-                            BasicComponent(
-                                title = rowTitle,
-                                summary = rowSummary,
-                                endActions = {
-                                    if (isKimi && kimiWebRunning) {
-                                        TextButton(
-                                            text = stringResource(R.string.action_stop),
-                                            enabled = !kimiWebLaunching && !requiresRoot,
-                                            minWidth = 0.dp,
-                                            minHeight = 32.dp,
-                                            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                            onClick = onStopKimi,
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                    }
-                                    TextButton(
-                                        text = primaryText,
-                                        enabled = primaryEnabled,
-                                        minWidth = 0.dp,
-                                        minHeight = 32.dp,
-                                        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        onClick = onPrimaryClick,
-                                    )
-                                },
-                            )
-                        }
+                        BasicComponent(
+                            title = rowTitle,
+                            summary = rowSummary,
+                            endActions = {
+                                TextButton(
+                                    text = primaryText,
+                                    enabled = primaryEnabled,
+                                    minWidth = 0.dp,
+                                    minHeight = 32.dp,
+                                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    onClick = onPrimaryClick,
+                                )
+                            },
+                        )
                     }
 
                     val apkSummary = apkAnalysisProgress?.summary(context) ?: if (apkAnalysisReady) {
@@ -589,73 +436,22 @@ internal fun LinuxEnvironmentScreen(
                             }
                         }
                     }
-                    if (uiStyle == AppearanceUiStyle.COUI) {
-                        CouiPreference(
-                            title = stringResource(R.string.ui_apk_analysis_95ad17),
-                            summary = apkSummary,
-                            showChevron = false,
-                            trailing = {
-                                CouiButton(
-                                    text = apkButtonText,
-                                    enabled = apkEnabled,
-                                    minHeight = 32.dp,
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    onClick = onApkInstall,
-                                )
-                            },
-                        )
-                    } else {
-                        BasicComponent(
-                            title = stringResource(R.string.ui_apk_analysis_95ad17),
-                            summary = apkSummary,
-                            endActions = {
-                                TextButton(
-                                    text = apkButtonText,
-                                    enabled = apkEnabled,
-                                    minWidth = 0.dp,
-                                    minHeight = 32.dp,
-                                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    onClick = onApkInstall,
-                                )
-                            },
-                        )
-                    }
-                }
-                if (uiStyle == AppearanceUiStyle.COUI) {
-                    Group(
-                        modifier = Modifier.animateItem(),
-                        title = stringResource(R.string.ui_optional_tools_3097d6),
-                    ) {
-                        optionalItemsContent()
-                    }
-                } else {
-                    Card(
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = 12.dp)
-                            .padding(bottom = 12.dp),
-                    ) {
-                        optionalItemsContent()
-                    }
+                    BasicComponent(
+                        title = stringResource(R.string.ui_apk_analysis_95ad17),
+                        summary = apkSummary,
+                        endActions = {
+                            TextButton(
+                                text = apkButtonText,
+                                enabled = apkEnabled,
+                                minWidth = 0.dp,
+                                minHeight = 32.dp,
+                                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                onClick = onApkInstall,
+                            )
+                        },
+                    )
                 }
             }
-        }
-    }
-
-    when (uiStyle) {
-        AppearanceUiStyle.COUI -> {
-            CouiLazyScaffoldPage(
-                title = stringResource(R.string.ui_linux_tool_environment_314d22),
-                onBack = onBack,
-                content = listContent,
-            )
-        }
-        AppearanceUiStyle.MIUIX -> {
-            MiuixScaffoldPage(
-                title = stringResource(R.string.ui_linux_tool_environment_314d22),
-                onBack = onBack,
-                content = listContent,
-            )
         }
     }
 }

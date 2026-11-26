@@ -7,6 +7,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import io.github.mangi.eta.agent.runtime.archive.AgentExternalArchivePayload
+import io.github.mangi.eta.agent.runtime.ipc.AgentRuntimeWire
+import io.github.mangi.eta.agent.runtime.ipc.AgentUiHandoffPayload
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], application = Application::class)
@@ -22,12 +25,19 @@ class AgentConversationIdentityTest {
     @Test
     fun externalRunsKeepThePersistedArchiveIdentity() {
         val payload = AgentExternalArchivePayload("请求", "dialog-42", "会话").toJson()
-        val handoff = AgentRuntimeWire.EntryHandoff("run-a", "xiaoai", payload)
-        assertEquals("archive-777ba66ea9576d0e68c49b39", AgentConversationIdentity.fromHandoff(handoff, "run-a"))
-        assertEquals(AgentConversationIdentity.fromHandoff(handoff, "run-a"),
-            AgentConversationIdentity.fromHandoff(handoff.copy(id = "run-b"), "run-b"))
-        assertNotEquals(AgentConversationIdentity.fromHandoff(handoff, "run-a"),
-            AgentConversationIdentity.fromHandoff(handoff.copy(source = "breeno"), "run-a"))
+        val handoff = AgentRuntimeWire.EntryHandoff("run-a", "entry_a", payload)
+        assertEquals(
+            AgentConversationIdentity.archiveConversationId("entry_a", "dialog-42"),
+            AgentConversationIdentity.fromHandoff(handoff, "run-a"),
+        )
+        assertEquals(
+            AgentConversationIdentity.fromHandoff(handoff, "run-a"),
+            AgentConversationIdentity.fromHandoff(handoff.copy(id = "run-b"), "run-b"),
+        )
+        assertNotEquals(
+            AgentConversationIdentity.fromHandoff(handoff, "run-a"),
+            AgentConversationIdentity.fromHandoff(handoff.copy(source = "entry_b"), "run-a"),
+        )
     }
 
     @Test

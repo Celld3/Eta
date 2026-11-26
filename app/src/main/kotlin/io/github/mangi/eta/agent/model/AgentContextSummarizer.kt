@@ -1,9 +1,19 @@
 package io.github.mangi.eta.agent.model
 
+import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.AgentRunController
 import io.github.mangi.eta.agent.runtime.AgentTokenUsage
+import io.github.mangi.eta.core.AppStrings
 import org.json.JSONArray
 import org.json.JSONObject
+import io.github.mangi.eta.agent.model.provider.AgentModelClient
+import io.github.mangi.eta.agent.model.provider.AgentModelFailure
+import io.github.mangi.eta.agent.model.provider.AgentProviderClient
+import io.github.mangi.eta.agent.model.provider.AssistantBlockKind
+import io.github.mangi.eta.agent.model.provider.AssistantStopReason
+import io.github.mangi.eta.agent.model.provider.ProviderEvent
+import io.github.mangi.eta.agent.model.provider.ProviderRequest
+import io.github.mangi.eta.agent.model.provider.ProviderRequestPurpose
 
 /** 摘要只有完整成功后才能替换历史；失败时保留原文，不细分重放请求。 */
 internal class AgentContextSummarizer(
@@ -161,11 +171,21 @@ internal class AgentContextSummarizer(
             }))
 
     private fun invalidSummary() = AgentModelFailure(
-        "CONTEXT_SUMMARY_INVALID", false, "模型未返回完整且有界的摘要，原始上下文已保留。",
+        "CONTEXT_SUMMARY_INVALID",
+        false,
+        AppStrings.get(
+            R.string.summarizer_err_invalid_summary,
+            "模型未返回完整且有界的摘要，原始上下文已保留。",
+        ),
     )
 
     private fun toolAttemptFailure() = AgentModelFailure(
-        TOOL_CALL_ATTEMPT_CODE, false, "模型在生成摘要时尝试调用工具，原始上下文已保留。",
+        TOOL_CALL_ATTEMPT_CODE,
+        false,
+        AppStrings.get(
+            R.string.summarizer_err_tool_call,
+            "模型在生成摘要时尝试调用工具，原始上下文已保留。",
+        ),
     )
 
     private companion object {

@@ -25,8 +25,10 @@ import androidx.room.migration.Migration
         McpServerEntity::class,
         CharacterEntity::class,
         UserPersonaEntity::class,
+        ScheduledTaskEntity::class,
+        ScheduledTaskRunEntity::class,
     ],
-    version = 26,
+    version = 30,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -36,6 +38,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
     abstract fun skillDao(): SkillDao
     abstract fun mcpServerDao(): McpServerDao
     abstract fun characterDao(): CharacterDao
+    abstract fun scheduledTaskDao(): ScheduledTaskDao
 
     companion object {
         @Volatile
@@ -69,6 +72,10 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_23_24,
                         MIGRATION_24_25,
                         MIGRATION_25_26,
+                        MIGRATION_26_27,
+                        MIGRATION_27_28,
+                        MIGRATION_28_29,
+                        MIGRATION_29_30,
                     )
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) { createTextChunkCleanup(db) }
@@ -140,10 +147,85 @@ internal abstract class EtaDatabase : RoomDatabase() {
             database.execSQL("ALTER TABLE conversation_messages ADD COLUMN compaction_archive_id TEXT")
         }
 
+        internal val MIGRATION_26_27 = Migration(26, 27) { database ->
+            database.execSQL("ALTER TABLE mcp_servers ADD COLUMN tools_truncation_reason TEXT")
+        }
+
+        internal val MIGRATION_27_28 = Migration(27, 28) { database ->
+            database.execSQL("ALTER TABLE model_providers ADD COLUMN vertex_project TEXT NOT NULL DEFAULT ''")
+            database.execSQL("ALTER TABLE model_providers ADD COLUMN vertex_location TEXT NOT NULL DEFAULT 'global'")
+        }
+
+        internal val MIGRATION_28_29 = Migration(28, 29) { database ->
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS scheduled_tasks (" +
+                    "id TEXT NOT NULL PRIMARY KEY, " +
+                    "name TEXT NOT NULL, " +
+                    "prompt TEXT NOT NULL, " +
+                    "enabled INTEGER NOT NULL, " +
+                    "trigger_kind TEXT NOT NULL, " +
+                    "schedule_json TEXT NOT NULL, " +
+                    "misfire_policy TEXT NOT NULL, " +
+                    "misfire_window_minutes INTEGER NOT NULL, " +
+                    "quiet_hours_json TEXT NOT NULL, " +
+                    "delivery_mode TEXT NOT NULL, " +
+                    "session_mode TEXT NOT NULL, " +
+                    "dedicated_conversation_key TEXT, " +
+                    "model_id TEXT, " +
+                    "reasoning_effort TEXT, " +
+                    "capabilities_json TEXT NOT NULL, " +
+                    "timeout_seconds INTEGER NOT NULL, " +
+                    "memo TEXT NOT NULL, " +
+                    "memo_updated_at INTEGER NOT NULL, " +
+                    "next_run_at INTEGER, " +
+                    "last_run_at INTEGER, " +
+                    "last_status TEXT, " +
+                    "last_summary TEXT NOT NULL, " +
+                    "consecutive_failures INTEGER NOT NULL, " +
+                    "auto_disabled_reason TEXT, " +
+                    "created_at INTEGER NOT NULL, " +
+                    "updated_at INTEGER NOT NULL)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_scheduled_tasks_enabled_next_run_at " +
+                    "ON scheduled_tasks (enabled, next_run_at)"
+            )
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS scheduled_task_runs (" +
+                    "id TEXT NOT NULL PRIMARY KEY, " +
+                    "task_id TEXT NOT NULL, " +
+                    "trigger_source TEXT NOT NULL, " +
+                    "scheduled_for_at INTEGER, " +
+                    "started_at INTEGER NOT NULL, " +
+                    "finished_at INTEGER, " +
+                    "status TEXT NOT NULL, " +
+                    "summary TEXT NOT NULL, " +
+                    "notified INTEGER NOT NULL, " +
+                    "archive_conversation_key TEXT, " +
+                    "model_label TEXT NOT NULL, " +
+                    "FOREIGN KEY(task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_scheduled_task_runs_task_id_started_at " +
+                    "ON scheduled_task_runs (task_id, started_at)"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_scheduled_task_runs_status " +
+                    "ON scheduled_task_runs (status)"
+            )
+        }
+
+        internal val MIGRATION_29_30 = Migration(29, 30) { database ->
+            database.execSQL(
+                "ALTER TABLE scheduled_tasks ADD COLUMN show_running_notification INTEGER NOT NULL DEFAULT 0"
+            )
+        }
+
         private fun createTextChunkCleanup(database: androidx.sqlite.db.SupportSQLiteDatabase) {
             mapOf("runtime_results" to "run_id", "runtime_archive_runs" to "archive_run_id",
                 "runtime_inflight_runs" to "run_id", "conversation_context_checkpoints" to "conversation_id",
-                "conversation_messages" to "id", "conversations" to "id")
+                "conversation_messages" to "id", "conversations" to "id",
+                "mcp_servers" to "id")
                 .plus(if (database.version >= 21 || database.query(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'roleplay_characters'"
                 ).use { it.moveToFirst() }) mapOf("roleplay_characters" to "id", "roleplay_user_persona" to "id") else emptyMap())

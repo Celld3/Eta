@@ -1,12 +1,22 @@
 package io.github.mangi.eta.ui
 
+import android.app.ActivityOptions
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.core.content.IntentCompat
 import io.github.mangi.eta.agent.voice.EtaAssistantOverlayService
-import io.github.mangi.eta.ui.app.ArchivedConversationRequest
-import io.github.mangi.eta.ui.voice.ACTION_SPEECH_SETTINGS
+import io.github.mangi.eta.ui.state.ArchivedConversationRequest
+import io.github.mangi.eta.ui.components.ACTION_SPEECH_SETTINGS
+internal fun conversationHandoffStartMode(): Int =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
+    } else {
+        // Android 14、15 的 PendingIntent 交接仅支持旧版显式授权模式。
+        @Suppress("DEPRECATION")
+        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+    }
 
 data class IncomingShareRequest(
     val uris: List<String> = emptyList(),
@@ -18,6 +28,7 @@ internal data class MainActivityLaunchRequests(
     val assistantConversationKey: String? = null,
     val conversationId: String? = null,
     val archivedConversation: ArchivedConversationRequest? = null,
+    val scheduledTaskId: String? = null,
     val sharedContent: IncomingShareRequest? = null,
     val speechSettings: Boolean = false,
     val terminal: Boolean = false,
@@ -27,6 +38,9 @@ internal data class MainActivityLaunchRequests(
         ACTION_SPEECH_SETTINGS -> copy(speechSettings = true)
         MainActivity.ACTION_OPEN_CONVERSATION_ID -> copy(
             conversationId = intent.nonBlankExtra(MainActivity.EXTRA_CONVERSATION_ID),
+        )
+        MainActivity.ACTION_OPEN_SCHEDULED_TASK_DETAIL -> copy(
+            scheduledTaskId = intent.nonBlankExtra(MainActivity.EXTRA_SCHEDULED_TASK_ID),
         )
         MainActivity.ACTION_OPEN_ARCHIVED_CONVERSATION -> {
             val source = intent.nonBlankExtra(MainActivity.EXTRA_HANDOFF_SOURCE)
@@ -64,6 +78,7 @@ internal data class MainActivityLaunchRequests(
             putString("conversation_id", conversationId)
             putString("archive_source", archivedConversation?.source)
             putString("archive_conversation_key", archivedConversation?.conversationKey)
+            putString("scheduled_task_id", scheduledTaskId)
             sharedContent?.let { share ->
                 putStringArrayList("share_uris", ArrayList(share.uris))
                 putString("share_mime_type", share.mimeType)
@@ -95,6 +110,7 @@ internal data class MainActivityLaunchRequests(
                 archivedConversation = if (source != null && key != null) {
                     ArchivedConversationRequest(source, key)
                 } else null,
+                scheduledTaskId = saved.getString("scheduled_task_id"),
                 sharedContent = if (shareUris.isNotEmpty() || shareText != null) {
                     IncomingShareRequest(
                         uris = shareUris,

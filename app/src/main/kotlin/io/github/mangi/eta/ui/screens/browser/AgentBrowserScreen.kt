@@ -12,9 +12,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.foundation.text.input.setTextAndSelectAll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,24 +28,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.core.net.toUri
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.browser.AgentBrowserSession
 import io.github.mangi.eta.agent.browser.BrowserSessionRegistry
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
-import io.github.mangi.eta.data.model.AppearanceUiStyle
-import io.github.mangi.eta.ui.app.LocalUiStyle
-import io.github.mangi.eta.ui.components.MiuixDialogActions
-import io.github.mangi.eta.ui.components.coui.CouiConfirmDialog
+import io.github.mangi.eta.ui.components.DialogActions
+import io.github.mangi.eta.ui.components.currentGlassOverlayBackdrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.glass.GlassDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 /** 挂载会话原有的 WebView，页面自身持有地址栏及系统栏 Insets。 */
 @Composable
@@ -56,20 +55,20 @@ internal fun AgentBrowserScreen(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val noExternalAppMessage = stringResource(R.string.browser_no_external_app)
-    val snapshot by session.snapshots.collectAsState()
-    var address by remember(session) { mutableStateOf(TextFieldValue("")) }
+    val snapshot by session.snapshots.collectAsStateWithLifecycle()
+    val address = remember(session) { TextFieldState() }
     var addressFocused by remember(session) { mutableStateOf(false) }
     var actionPending by remember(session) { mutableStateOf(false) }
     var showClearDataDialog by remember { mutableStateOf(false) }
 
     // 编辑期间不覆盖用户输入；非编辑态仅显示域名，进入编辑时还原完整地址。
-    LaunchedEffect(addressFocused) {
+    LaunchedEffect(address, addressFocused) {
         if (addressFocused) {
-            address = TextFieldValue(snapshot.displayUrl, TextRange(0, snapshot.displayUrl.length))
+            address.setTextAndSelectAll(snapshot.displayUrl)
         }
     }
-    LaunchedEffect(snapshot.displayUrl, snapshot.host, addressFocused) {
-        if (!addressFocused) address = TextFieldValue(snapshot.host.ifBlank { snapshot.displayUrl })
+    LaunchedEffect(address, snapshot.displayUrl, snapshot.host, addressFocused) {
+        if (!addressFocused) address.setTextAndPlaceCursorAtEnd(snapshot.host.ifBlank { snapshot.displayUrl })
     }
     LaunchedEffect(snapshot.error) {
         snapshot.error?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
@@ -93,7 +92,7 @@ internal fun AgentBrowserScreen(
     }
 
     fun navigate() {
-        val input = address.text.trim()
+        val input = address.text.toString().trim()
         val target = if (input.isNotBlank() && input == snapshot.displayUrl) {
             snapshot.url
         } else {
@@ -103,6 +102,11 @@ internal fun AgentBrowserScreen(
         focusManager.clearFocus()
         keyboard?.hide()
         launchBrowserAction { session.navigateFromUser(context.applicationContext, target) }
+    }
+
+    val onConfirmClear: () -> Unit = {
+        showClearDataDialog = false
+        launchBrowserAction { BrowserSessionRegistry.clearSharedBrowsingData(context.applicationContext) }
     }
 
     Column(
@@ -116,7 +120,6 @@ internal fun AgentBrowserScreen(
         BrowserAddressBar(
             snapshot = snapshot,
             address = address,
-            onAddressChange = { address = it },
             focused = addressFocused,
             onFocusChange = { addressFocused = it },
             actionPending = actionPending,
@@ -150,40 +153,19 @@ internal fun AgentBrowserScreen(
         BrowserWebViewHost(session = session, modifier = Modifier.weight(1f))
     }
 
-    if (showClearDataDialog) {
-        val onConfirmClear: () -> Unit = {
-            showClearDataDialog = false
-            launchBrowserAction { BrowserSessionRegistry.clearSharedBrowsingData(context.applicationContext) }
-        }
-        when (LocalUiStyle.current) {
-            AppearanceUiStyle.COUI -> {
-                CouiConfirmDialog(
-                    visible = true,
-                    title = stringResource(R.string.browser_clear_shared_data),
-                    message = stringResource(R.string.browser_clear_shared_data_message),
-                    confirmText = stringResource(R.string.browser_clear_shared_data),
-                    confirmEnabled = !actionPending,
-                    destructive = true,
-                    onConfirm = onConfirmClear,
-                    onDismissRequest = { showClearDataDialog = false },
-                )
-            }
-            AppearanceUiStyle.MIUIX -> {
-                WindowDialog(
-                    show = true,
-                    title = stringResource(R.string.browser_clear_shared_data),
-                    summary = stringResource(R.string.browser_clear_shared_data_message),
-                    onDismissRequest = { showClearDataDialog = false },
-                ) {
-                    MiuixDialogActions(
-                        confirmText = stringResource(R.string.browser_clear_shared_data),
-                        confirmEnabled = !actionPending,
-                        destructive = true,
-                        onCancel = { showClearDataDialog = false },
-                        onConfirm = onConfirmClear,
-                    )
-                }
-            }
-        }
+    GlassDialog(
+        show = showClearDataDialog,
+        backdrop = currentGlassOverlayBackdrop(),
+        title = stringResource(R.string.browser_clear_shared_data),
+        summary = stringResource(R.string.browser_clear_shared_data_message),
+        onDismissRequest = { showClearDataDialog = false },
+    ) {
+        DialogActions(
+            confirmText = stringResource(R.string.browser_clear_shared_data),
+            confirmEnabled = !actionPending,
+            destructive = true,
+            onCancel = { showClearDataDialog = false },
+            onConfirm = onConfirmClear,
+        )
     }
 }

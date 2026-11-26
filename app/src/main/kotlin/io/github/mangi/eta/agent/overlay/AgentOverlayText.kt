@@ -48,7 +48,7 @@ internal fun AgentOverlayStatus.localizedText(resources: Resources): String = wh
 internal fun toolDisplayName(name: String): String = toolDisplayName(LocalResources.current, name)
 
 internal fun toolDisplayName(resources: Resources, name: String): String {
-    val resource = toolDisplayNameResource(name) ?: return io.github.mangi.eta.agent.model.AgentPhoneToolCatalog.entries.firstOrNull { it.name == name }?.title
+    val resource = toolDisplayNameResource(name) ?: return io.github.mangi.eta.agent.model.catalog.AgentPhoneToolCatalog.entries.firstOrNull { it.name == name }?.title
         ?: io.github.mangi.eta.agent.context.PersonalSearchTools.searches.firstOrNull { it.name == name }?.title ?: name
     return resources.getString(resource)
 }
@@ -84,6 +84,7 @@ internal fun toolDisplayNameResource(name: String): Int? = when (name) {
     "browser_use" -> R.string.tool_browser_use
     "web_search" -> R.string.tool_web_search
     "fetch_url" -> R.string.tool_fetch_url
+    "generate_image" -> R.string.tool_generate_image
     "terminal" -> R.string.tool_terminal
     "terminal_job" -> R.string.tool_terminal_job
     "terminal_daemon" -> R.string.tool_terminal_daemon
@@ -98,6 +99,8 @@ internal fun toolDisplayNameResource(name: String): Int? = when (name) {
     "list_directory" -> R.string.tool_list_directory
     "memory_get" -> R.string.tool_memory_get
     "memory_write" -> R.string.tool_memory_write
+    "subagent" -> R.string.tool_subagent
+    "subagent_profile" -> R.string.tool_subagent_profile
     "set_alarm" -> R.string.tool_set_alarm
     "set_timer" -> R.string.tool_set_timer
     "device_status" -> R.string.tool_device_status

@@ -26,28 +26,32 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
-import io.github.mangi.eta.data.model.AppearanceUiStyle
-import io.github.mangi.eta.ui.app.DaemonTaskUi
-import io.github.mangi.eta.ui.app.LocalUiStyle
-import io.github.mangi.eta.ui.app.displayName
+import io.github.mangi.eta.ui.state.DaemonTaskUi
+import io.github.mangi.eta.ui.state.displayName
 import io.github.mangi.eta.ui.components.EtaMonospace
 import io.github.mangi.eta.ui.components.StatusSuccess
-import io.github.mangi.eta.ui.components.coui.CouiNoticeDialog
+import io.github.mangi.eta.ui.components.currentGlassOverlayBackdrop
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.glass.GlassDialog
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 internal fun DaemonTasksDialog(
+    show: Boolean,
     tasks: List<DaemonTaskUi>,
     onDismiss: () -> Unit,
     onStop: (String) -> Unit,
     onLoadLogs: suspend (String) -> String,
 ) {
-    val body: @Composable () -> Unit = {
+    GlassDialog(
+        show = show,
+        backdrop = currentGlassOverlayBackdrop(),
+        title = stringResource(R.string.terminal_daemon_tasks),
+        onDismissRequest = onDismiss,
+    ) {
         if (tasks.isEmpty()) {
             Text(
                 text = stringResource(R.string.terminal_daemon_empty),
@@ -63,28 +67,6 @@ internal fun DaemonTasksDialog(
                 items(items = tasks, key = { it.id }) { task ->
                     DaemonTaskRow(task = task, onStop = onStop, onLoadLogs = onLoadLogs)
                 }
-            }
-        }
-    }
-
-    when (LocalUiStyle.current) {
-        AppearanceUiStyle.COUI -> {
-            CouiNoticeDialog(
-                visible = true,
-                title = stringResource(R.string.terminal_daemon_tasks),
-                message = null,
-                onDismissRequest = onDismiss,
-            ) {
-                body()
-            }
-        }
-        AppearanceUiStyle.MIUIX -> {
-            WindowDialog(
-                show = true,
-                title = stringResource(R.string.terminal_daemon_tasks),
-                onDismissRequest = onDismiss,
-            ) {
-                body()
             }
         }
     }
@@ -184,13 +166,15 @@ private fun daemonStatusColor(task: DaemonTaskUi) = when {
 @Composable
 private fun daemonMeta(task: DaemonTaskUi): String {
     val environmentLabel = task.environment.displayName
-    val stateLabel = when (task.status) {
-        "completed" -> "已完成"
-        "failed" -> "执行失败"
-        "timed_out" -> "已超时"
-        "stopped" -> "已停止"
-        "interrupted" -> "已中断"
-        else -> stringResource(if (task.running) R.string.terminal_daemon_running else R.string.terminal_daemon_exited)
-    }
+    val stateLabel = stringResource(
+        when (task.status) {
+            "completed" -> R.string.ui_misc_daemon_completed
+            "failed" -> R.string.ui_misc_daemon_failed
+            "timed_out" -> R.string.ui_misc_daemon_timed_out
+            "stopped" -> R.string.ui_misc_daemon_stopped
+            "interrupted" -> R.string.ui_misc_daemon_interrupted
+            else -> if (task.running) R.string.terminal_daemon_running else R.string.terminal_daemon_exited
+        },
+    )
     return "$environmentLabel · ${task.identity} · $stateLabel"
 }

@@ -5,6 +5,7 @@ import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import io.github.mangi.eta.agent.accessibility.PackageWindowVisibility
 import io.github.mangi.eta.core.AgentLogger
 import java.util.concurrent.atomic.AtomicBoolean
+import io.github.mangi.eta.agent.runtime.ipc.AgentRuntimeWire
 
 /**
  * 把外部入口从前台工具的真实操作对象中隔离开。
@@ -123,8 +124,6 @@ internal class EntrySurfaceGuard private constructor(
         ): EntrySurfaceGuard? {
             if (handoff?.dismissEntrySurfaceOnForegroundOperation != true) return null
             val packageName = when (handoff.source) {
-                BREENO_HANDOFF_SOURCE -> BREENO_PACKAGE_NAME
-                XIAOAI_HANDOFF_SOURCE -> XIAOAI_PACKAGE_NAME
                 AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE -> ETA_PACKAGE_NAME
                 else -> null
             }

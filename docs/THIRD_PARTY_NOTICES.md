@@ -20,9 +20,9 @@ Android 标准库兼容使用 [desugar_jdk_libs](https://github.com/google/desug
 
 Eta 使用 [Nimbus JOSE + JWT](https://connect2id.com/products/nimbus-jose-jwt) 校验 OAuth 登录的签名和身份声明。该库由 Connect2id Ltd. 维护，采用 Apache License 2.0；许可全文随 APK 保存在 [`assets/licenses/nimbus-jose-jwt-Apache-2.0.txt`](../app/src/main/assets/licenses/nimbus-jose-jwt-Apache-2.0.txt)。依赖版本以 `gradle/libs.versions.toml` 为准。
 
-## COUI-Kit 与 Miuix
+## Miuix
 
-Eta 的应用界面支持 [COUI-Kit](https://github.com/itoseo/COUI-Kit)（`io.github.itoseo:coui`，采用 [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/)）与 [Miuix](https://github.com/compose-miuix-ui/miuix)（采用 [Apache License 2.0](https://github.com/compose-miuix-ui/miuix/blob/main/LICENSE)）。依赖版本以 `gradle/libs.versions.toml` 为准。
+Eta 的应用界面使用 [Miuix](https://github.com/compose-miuix-ui/miuix)（采用 [Apache License 2.0](https://github.com/compose-miuix-ui/miuix/blob/main/LICENSE)）。依赖版本以 `gradle/libs.versions.toml` 为准。
 
 ## 本地语音识别
 
@@ -111,38 +111,6 @@ Lobe Icons 使用 MIT License：
 MIT License
 
 Copyright (c) 2023 LobeHub
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## Kimi Code 图标
-
-首页“启动 Kimi Web”入口的 `ic_kimi_code.xml` 转换自 Moonshot AI
-[Kimi Code](https://github.com/MoonshotAI/kimi-code/blob/d1ca65e1de189617e9edbc54010e62d472a1de3d/apps/vscode/resources/kimi-icon.svg)
-的单色侧栏图标。转换仅适配 Android VectorDrawable 格式，保留原始几何与比例。
-
-Kimi Code 使用 MIT License：
-
-```text
-MIT License
-
-Copyright (c) 2026 Moonshot AI
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

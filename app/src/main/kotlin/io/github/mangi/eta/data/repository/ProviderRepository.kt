@@ -1,6 +1,8 @@
 package io.github.mangi.eta.data.repository
 
 import android.content.Context
+import io.github.mangi.eta.R
+import io.github.mangi.eta.core.AppStrings
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.ProviderWithModelsSeed
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import io.github.mangi.eta.data.repository.catalog.normalizedModelId
 
 internal object ProviderRepository {
     /** 配置与模型共用修改锁，避免旧连接的目录在认证方式切换后落库。 */
@@ -41,16 +44,22 @@ internal object ProviderRepository {
     @Volatile
     private lateinit var applicationContext: Context
 
+    @Volatile
+    private var cachedProviders: List<ProviderSetting> = emptyList()
+
     fun init(context: Context) {
         applicationContext = context.applicationContext
         ProviderCredentialRepository.init(context)
     }
+
+    fun cachedProviders(): List<ProviderSetting> = cachedProviders
 
     fun providersFlow(): Flow<List<ProviderSetting>> =
         dao().providersFlow().map { providers ->
             providers
                 .map { it.toDomain() }
                 .sortedBy(ProviderSetting::sortOrder)
+                .also { cachedProviders = it }
         }
 
     fun settingsFlow(): Flow<Settings> =
@@ -63,6 +72,7 @@ internal object ProviderRepository {
         dao().providers()
             .map { it.toDomain() }
             .sortedBy(ProviderSetting::sortOrder)
+            .also { cachedProviders = it }
 
     suspend fun providerById(id: String): ProviderSetting? =
         dao().providerById(id)?.toDomain()
@@ -81,17 +91,23 @@ internal object ProviderRepository {
 
     suspend fun updateProvider(provider: ProviderSetting) {
         mutationMutex.withLock {
-            val previous = requireNotNull(providerById(provider.id)) { "Provider 不存在" }
+            val previous = requireNotNull(providerById(provider.id)) {
+                AppStrings.get(R.string.repo_err_provider_not_found, "Provider 不存在")
+            }
             if (previous.authMode != provider.authMode) {
                 forgetCredentials(provider.id)
             }
-            require(dao().updateProvider(provider.toEntity()) == 1) { "Provider 不存在" }
+            require(dao().updateProvider(provider.toEntity()) == 1) {
+                AppStrings.get(R.string.repo_err_provider_not_found, "Provider 不存在")
+            }
         }
         repairSelection()
     }
 
     internal suspend fun replaceModels(providerId: String, models: List<Model>) {
-        val provider = requireNotNull(providerById(providerId)) { "Provider 不存在" }
+        val provider = requireNotNull(providerById(providerId)) {
+            AppStrings.get(R.string.repo_err_provider_not_found, "Provider 不存在")
+        }
         dao().replaceModels(
             providerId = providerId,
             models = provider.withModels(models).toModelEntities(),
@@ -117,7 +133,11 @@ internal object ProviderRepository {
             val nextOrder = (allProviders().maxOfOrNull { it.sortOrder } ?: -1) + 1
             source.deepCopy(
                 id = newId(),
-                name = "${source.name} 副本",
+                name = AppStrings.get(
+                    R.string.repo_err_provider_copy_name,
+                    "%1\$s 副本",
+                    source.name,
+                ),
                 sortOrder = nextOrder,
                 builtIn = false,
             ).also { replaceProvider(it) }

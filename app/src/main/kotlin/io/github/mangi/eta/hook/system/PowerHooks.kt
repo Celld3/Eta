@@ -1,8 +1,8 @@
 package io.github.mangi.eta.hook.system
 
-import io.github.mangi.eta.core.HookSupport
-import io.github.mangi.eta.core.HookInstallation
-import io.github.mangi.eta.core.HookRegistrar
+import io.github.mangi.eta.hook.support.HookSupport
+import io.github.mangi.eta.hook.support.HookInstallation
+import io.github.mangi.eta.hook.support.HookRegistrar
 import io.github.mangi.eta.core.ModuleConfig
 import io.github.mangi.eta.core.ModuleLogger
 import io.github.mangi.eta.core.safeLogType
@@ -110,7 +110,7 @@ internal object PowerHooks {
                     if (activityStarted) {
                         null
                     } else {
-                        // 当前触发不等待后台修复；所有快速路径失败后立即回退小布。
+                        // 当前触发不等待后台修复；所有快速路径失败后立即回退系统默认逻辑。
                         chain.proceed()
                     }
                 }

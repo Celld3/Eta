@@ -50,6 +50,7 @@ sealed interface AgentToolsAction {
     data object NavigateBack : AgentToolsAction
     data object OpenBrowser : AgentToolsAction
     data object OpenWebToolsSettings : AgentToolsAction
+    data object OpenImageGenSettings : AgentToolsAction
 }
 
 sealed interface AgentSkillsAction {

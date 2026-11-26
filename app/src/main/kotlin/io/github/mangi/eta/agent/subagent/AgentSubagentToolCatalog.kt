@@ -1,6 +1,6 @@
 package io.github.mangi.eta.agent.subagent
 
-import io.github.mangi.eta.agent.model.AgentToolSchema
+import io.github.mangi.eta.agent.model.catalog.AgentToolSchema
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -85,7 +85,7 @@ internal object AgentSubagentToolCatalog {
                     .put("maxItems", 48)
                     .put(
                         "description",
-                        "Optional tool allowlist for an ad-hoc subagent (e.g. [\"summarize_bills\", \"search_bills\"]). Omit to use the preset's tools or all non-GUI tools.",
+                        "Optional tool allowlist for an ad-hoc subagent (e.g. [\"summarize_bills\", \"search_bills\"]). For built-in presets, this only narrows allowed tools. Omit to use the preset's tools or all non-GUI read/file/terminal/MCP tools (device-state write tools require explicit naming).",
                     ),
             )
             .put(

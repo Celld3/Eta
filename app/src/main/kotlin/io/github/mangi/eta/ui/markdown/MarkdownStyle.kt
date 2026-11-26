@@ -80,8 +80,7 @@ internal fun rememberMarkdownStyle(tone: MarkdownTone): MarkdownStyle {
     return remember(tone, colors, textStyles) {
         val answer = tone == MarkdownTone.Answer
         val isDark = colors.surface.luminance() < 0.5f
-        // COUI 与 Miuix 的 onSurface 自带不同基础 alpha；统一归一为纯墨色基色后再按层级分配浓度，
-        // 避免两套主题下细线、引用与正文的视觉重量发生漂移。
+        // 统一将 onSurface 归一为纯墨色基色后再按层级分配浓度，确保细线、引用与正文视觉重量稳定。
         val ink = colors.onSurface.copy(alpha = 1f)
         val strongColor = if (answer) {
             ink.copy(alpha = if (isDark) 0.96f else 0.95f)
@@ -217,7 +216,10 @@ internal fun markdownBlockGap(previous: MarkdownBlock?, current: MarkdownBlock, 
             current.level == 2 -> 20f
             else -> 16f
         }
+        previous is MarkdownHeading && current is MarkdownMath -> 10f
         previous is MarkdownHeading -> 6f
+        previous is MarkdownMath && current is MarkdownMath -> 12f
+        previous is MarkdownMath || current is MarkdownMath -> 14f
         previous is MarkdownParagraph && current is MarkdownList -> 8f
         previous is MarkdownParagraph && current is MarkdownParagraph -> 11f
         else -> 13f
@@ -241,7 +243,13 @@ internal fun markdownCompactGap(
 }
 
 internal fun MarkdownBlock.isStructuredContainer(): Boolean = when (this) {
-    is MarkdownQuote, is MarkdownCode, is MarkdownAlert, is MarkdownTable, is MarkdownRule -> true
+    is MarkdownQuote,
+    is MarkdownCode,
+    is MarkdownMath,
+    is MarkdownAlert,
+    is MarkdownTable,
+    is MarkdownRule,
+    -> true
     else -> false
 }
 

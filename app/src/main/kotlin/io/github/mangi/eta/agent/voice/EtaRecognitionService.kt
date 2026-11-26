@@ -1,13 +1,13 @@
 package io.github.mangi.eta.agent.voice
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
+import io.github.mangi.eta.agent.voice.asr.SystemSpeechRecognizer
 
 /**
  * Android 助理角色要求声明识别服务。Eta 自身只使用在线语音识别；若系统调用该兼容入口，则委托给外部 ASR。
@@ -121,9 +121,7 @@ class EtaRecognitionService : RecognitionService() {
         }
 
         override fun onLanguageDetection(results: Bundle) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                runCatching { callback.languageDetection(results) }
-            }
+            runCatching { callback.languageDetection(results) }
         }
     }
 }

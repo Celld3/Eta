@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -15,11 +14,10 @@ import io.github.mangi.eta.data.model.AppearanceAccentColor
 import io.github.mangi.eta.data.model.AppearancePaletteStyle
 import io.github.mangi.eta.data.model.AppearanceSettings
 import io.github.mangi.eta.data.model.AppearanceThemeMode
-import io.github.mangi.eta.data.model.AppearanceTopBarBlurStyle
-import io.github.mangi.eta.data.model.AppearanceUiStyle
 import io.github.mangi.eta.data.model.AssistantOverlaySettings
 import io.github.mangi.eta.data.model.AutoBackupSettings
 import io.github.mangi.eta.data.model.ConversationTitleSettings
+import io.github.mangi.eta.data.model.ImageGenSettings
 import io.github.mangi.eta.data.model.SpeechSettings
 import io.github.mangi.eta.data.model.SubagentSettings
 import io.github.mangi.eta.data.model.WebToolsSettings
@@ -34,6 +32,7 @@ import kotlinx.coroutines.flow.map
 internal object SettingsDataStore {
     private val SPEECH_SETTINGS = stringPreferencesKey("speech_settings_v1")
     private val WEB_TOOLS_SETTINGS = stringPreferencesKey("web_tools_settings_v1")
+    private val IMAGE_GEN_SETTINGS = stringPreferencesKey("image_gen_settings_v1")
     private val SUBAGENT_SETTINGS = stringPreferencesKey("subagent_settings_v1")
     private val AUTO_BACKUP_SETTINGS = stringPreferencesKey("auto_backup_settings_v1")
     private val CONVERSATION_TITLE_SETTINGS = stringPreferencesKey("conversation_title_settings_v1")
@@ -77,6 +76,26 @@ internal object SettingsDataStore {
     suspend fun setWebToolsSettings(settings: WebToolsSettings) {
         ensureInitialized()
         dataStore.edit { it[WEB_TOOLS_SETTINGS] = speechJson.encodeToString(settings) }
+    }
+
+    fun imageGenSettingsFlow(): Flow<ImageGenSettings> {
+        ensureInitialized()
+        return dataStore.data
+            .catch { cause ->
+                if (cause is IOException) emit(emptyPreferences()) else throw cause
+            }
+            .map { prefs ->
+                prefs[IMAGE_GEN_SETTINGS]?.let { raw ->
+                    runCatching { speechJson.decodeFromString<ImageGenSettings>(raw) }.getOrNull()
+                } ?: ImageGenSettings()
+            }
+    }
+
+    suspend fun imageGenSettings(): ImageGenSettings = imageGenSettingsFlow().first()
+
+    suspend fun setImageGenSettings(settings: ImageGenSettings) {
+        ensureInitialized()
+        dataStore.edit { it[IMAGE_GEN_SETTINGS] = speechJson.encodeToString(settings) }
     }
 
     fun subagentSettingsFlow(): Flow<SubagentSettings> {
@@ -171,14 +190,13 @@ internal object SettingsDataStore {
     private val OFFICIAL_MODEL_CATALOG_REVISION = intPreferencesKey("official_model_catalog_revision")
     private val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
     private val LINUX_DISTRIBUTION = stringPreferencesKey("linux_distribution")
-    private val APPEARANCE_UI_STYLE = stringPreferencesKey("appearance_ui_style")
     private val APPEARANCE_THEME_MODE = stringPreferencesKey("appearance_theme_mode")
     private val APPEARANCE_MONET_ENABLED = booleanPreferencesKey("appearance_monet_enabled")
     private val APPEARANCE_PALETTE_STYLE = stringPreferencesKey("appearance_palette_style")
     private val APPEARANCE_ACCENT_COLOR = stringPreferencesKey("appearance_accent_color")
     private val APPEARANCE_PURE_BLACK_ENABLED = booleanPreferencesKey("appearance_pure_black_enabled")
-    private val APPEARANCE_BLUR_ENABLED = booleanPreferencesKey("appearance_blur_enabled")
-    private val APPEARANCE_TOP_BAR_BLUR_STYLE = stringPreferencesKey("appearance_top_bar_blur_style")
+    private val APPEARANCE_PROGRESSIVE_BLUR_ENABLED =
+        booleanPreferencesKey("appearance_progressive_blur_enabled")
     private val APPEARANCE_SWIPE_DISMISS_ENABLED =
         booleanPreferencesKey("appearance_swipe_dismiss_enabled")
     private val APPEARANCE_PREDICTIVE_BACK_ENABLED =
@@ -195,11 +213,16 @@ internal object SettingsDataStore {
     @Volatile
     private lateinit var dataStore: DataStore<Preferences>
 
+    @Volatile
+    private var cachedSettings: Settings? = null
+
     fun init(context: Context) {
         if (!::dataStore.isInitialized) {
             dataStore = context.applicationContext.dataStore
         }
     }
+
+    fun cachedSettingsOrNull(): Settings? = cachedSettings
 
     fun settingsFlow(): Flow<Settings> {
         ensureInitialized()
@@ -211,7 +234,7 @@ internal object SettingsDataStore {
                     throw cause
                 }
             }
-            .map { preferences -> preferences.toSettings() }
+            .map { preferences -> preferences.toSettings().also { cachedSettings = it } }
     }
 
     suspend fun settings(): Settings = settingsFlow().first()
@@ -236,7 +259,7 @@ internal object SettingsDataStore {
             prefs.putOrRemove(SELECTED_PROVIDER_ID, updated.selectedProviderId)
             prefs.putOrRemove(SELECTED_MODEL_ID, updated.selectedModelId)
             prefs[MEMORY_ENABLED] = updated.memoryEnabled
-            prefs.putAppearance(updated.appearance.normalized())
+            prefs.putAppearance(updated.appearance)
         }
     }
 
@@ -332,30 +355,13 @@ internal object SettingsDataStore {
     }
 
     suspend fun setAppearanceSettings(settings: AppearanceSettings) {
-        updateSettings { it.copy(appearance = settings.normalized()) }
+        updateSettings { it.copy(appearance = settings) }
     }
 
     suspend fun updateAppearanceSettings(transform: (AppearanceSettings) -> AppearanceSettings) {
         updateSettings { settings ->
-            settings.copy(appearance = transform(settings.appearance).normalized())
+            settings.copy(appearance = transform(settings.appearance))
         }
-    }
-
-    suspend fun selectUiStyle(style: AppearanceUiStyle) {
-        ensureInitialized()
-        dataStore.edit { prefs ->
-            prefs[APPEARANCE_UI_STYLE] = style.persistedValue
-        }
-    }
-
-    suspend fun hasSavedUiStyle(): Boolean {
-        ensureInitialized()
-        return dataStore.data
-            .catch { cause ->
-                if (cause is IOException) emit(emptyPreferences()) else throw cause
-            }
-            .first()
-            .contains(APPEARANCE_UI_STYLE)
     }
 
     private fun ensureInitialized() {
@@ -380,16 +386,12 @@ internal object SettingsDataStore {
         selectedModelId = this[SELECTED_MODEL_ID],
         memoryEnabled = this[MEMORY_ENABLED] ?: true,
         appearance = AppearanceSettings(
-            uiStyle = AppearanceUiStyle.fromPersistedValue(this[APPEARANCE_UI_STYLE]),
             themeMode = AppearanceThemeMode.fromPersistedValue(this[APPEARANCE_THEME_MODE]),
             monetEnabled = this[APPEARANCE_MONET_ENABLED] ?: false,
             paletteStyle = AppearancePaletteStyle.fromPersistedValue(this[APPEARANCE_PALETTE_STYLE]),
             accentColor = AppearanceAccentColor.fromPersistedValue(this[APPEARANCE_ACCENT_COLOR]),
             pureBlackEnabled = this[APPEARANCE_PURE_BLACK_ENABLED] ?: false,
-            blurEnabled = this[APPEARANCE_BLUR_ENABLED] ?: true,
-            topBarBlurStyle = AppearanceTopBarBlurStyle.fromPersistedValue(
-                this[APPEARANCE_TOP_BAR_BLUR_STYLE],
-            ),
+            progressiveBlurEnabled = this[APPEARANCE_PROGRESSIVE_BLUR_ENABLED] ?: true,
             swipeDismissEnabled = this[APPEARANCE_SWIPE_DISMISS_ENABLED] ?: true,
             predictiveBackEnabled = this[APPEARANCE_PREDICTIVE_BACK_ENABLED] ?: true,
             interfaceScale = this[APPEARANCE_INTERFACE_SCALE] ?: 1f,
@@ -399,17 +401,12 @@ internal object SettingsDataStore {
     )
 
     private fun MutablePreferences.putAppearance(settings: AppearanceSettings) {
-        val currentStyle = AppearanceUiStyle.fromPersistedValue(this[APPEARANCE_UI_STYLE])
-        if (contains(APPEARANCE_UI_STYLE) || settings.uiStyle != currentStyle) {
-            this[APPEARANCE_UI_STYLE] = settings.uiStyle.persistedValue
-        }
         this[APPEARANCE_THEME_MODE] = settings.themeMode.persistedValue
         this[APPEARANCE_MONET_ENABLED] = settings.monetEnabled
         this[APPEARANCE_PALETTE_STYLE] = settings.paletteStyle.persistedValue
         this[APPEARANCE_ACCENT_COLOR] = settings.accentColor.persistedValue
         this[APPEARANCE_PURE_BLACK_ENABLED] = settings.pureBlackEnabled
-        this[APPEARANCE_BLUR_ENABLED] = settings.blurEnabled
-        this[APPEARANCE_TOP_BAR_BLUR_STYLE] = settings.topBarBlurStyle.persistedValue
+        this[APPEARANCE_PROGRESSIVE_BLUR_ENABLED] = settings.progressiveBlurEnabled
         this[APPEARANCE_SWIPE_DISMISS_ENABLED] = settings.swipeDismissEnabled
         this[APPEARANCE_PREDICTIVE_BACK_ENABLED] = settings.predictiveBackEnabled
         this[APPEARANCE_INTERFACE_SCALE] = settings.interfaceScale

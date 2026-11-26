@@ -78,7 +78,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceIn
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
-import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.browser.BrowserSessionSnapshot
 import io.github.mangi.eta.agent.imagegen.ImageGenToolCatalog
 import io.github.mangi.eta.data.model.ReasoningEffort
@@ -187,8 +186,6 @@ internal fun AgentChatBody(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
-    pendingCopy: CopyCardRequest? = null,
-    onCopyDismiss: () -> Unit = {},
     messageStartIndex: Int = 0,
     historyLoadState: ConversationHistoryLoadState = ConversationHistoryLoadState.Idle,
     onLoadEarlierMessages: () -> Unit = {},
@@ -319,8 +316,6 @@ internal fun AgentChatBody(
             onChoiceSelect = onChoiceSelect,
             onChoiceCustomInput = onChoiceCustomInput,
             onChoiceDismiss = onChoiceDismiss,
-            pendingCopy = pendingCopy,
-            onCopyDismiss = onCopyDismiss,
             currentBrowserMessageId = currentBrowserMessageId,
             hasEarlierMessages = hasEarlierMessages,
             messageStartIndex = messageStartIndex,
@@ -386,8 +381,6 @@ private fun AgentChatScaffold(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
-    pendingCopy: CopyCardRequest? = null,
-    onCopyDismiss: () -> Unit = {},
     currentBrowserMessageId: String?,
     hasEarlierMessages: Boolean,
     messageStartIndex: Int,
@@ -445,8 +438,6 @@ private fun AgentChatScaffold(
                 onChoiceSelect = onChoiceSelect,
                 onChoiceCustomInput = onChoiceCustomInput,
                 onChoiceDismiss = onChoiceDismiss,
-                pendingCopy = pendingCopy,
-                onCopyDismiss = onCopyDismiss,
             )
         },
     ) { innerPadding ->
@@ -1096,8 +1087,6 @@ private fun AgentChatBottomBar(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
-    pendingCopy: CopyCardRequest? = null,
-    onCopyDismiss: () -> Unit = {},
 ) {
     val surface = MiuixTheme.colorScheme.surface
     val bottomBarInsets = rememberFloatingBottomBarInsets(
@@ -1164,8 +1153,6 @@ private fun AgentChatBottomBar(
                 onChoiceSelect = onChoiceSelect,
                 onChoiceCustomInput = onChoiceCustomInput,
                 onChoiceDismiss = onChoiceDismiss,
-                pendingCopy = pendingCopy,
-                onCopyDismiss = onCopyDismiss,
                 glassBackdrop = glassBackdrop,
                 modifier = Modifier.fillMaxWidth(),
             )

@@ -94,7 +94,6 @@ internal fun iconForTool(toolId: String): ImageVector = when (toolId) {
     "release_gui" -> Icons.Rounded.Smartphone
     "present_to_user" -> Icons.AutoMirrored.Rounded.OpenInNew
     "ask_choice" -> Icons.Rounded.QuestionAnswer
-    "copy_to_clipboard" -> Icons.Rounded.ContentCopy
     "press_key" -> Icons.Rounded.KeyboardCommandKey
     "open_system_panel" -> Icons.Rounded.WebAsset
     "read_image" -> Icons.Rounded.Image

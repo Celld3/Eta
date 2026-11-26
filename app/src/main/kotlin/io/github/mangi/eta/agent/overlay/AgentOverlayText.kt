@@ -118,6 +118,5 @@ internal fun toolDisplayNameResource(name: String): Int? = when (name) {
     "app_state_control" -> R.string.tool_app_state_control
     "get_logcat" -> R.string.tool_get_logcat
     "ask_choice" -> R.string.tool_ask_choice
-    "copy_to_clipboard" -> R.string.tool_copy_to_clipboard
     else -> null
 }

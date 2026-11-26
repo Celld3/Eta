@@ -70,9 +70,9 @@ internal class AgentLocalTools(
     /**
      * 本次运行归属的会话身份，与 AgentConversationIdentity 同一套取值。
      *
-     * 选项卡片与复制卡片都按它归属，这样卡片不会跑到别的会话里。
-     * 没有会话归属的运行取 `run:<runId>`，这类键在界面上没有位置，交互层会退化：
-     * 选项卡片不弹、由模型改用文字提问，复制卡片则让调用方退回 set_clipboard。
+     * 选项卡片按它归属，这样卡片不会跑到别的会话里。
+     * 没有会话归属的运行取 `run:<runId>`，这类键在界面上没有位置，
+     * 交互层会退化成文字提问，由模型自己接着问。
      */
     private val conversationKey: String = "",
     private val browserRunId: String = "",
@@ -278,7 +278,6 @@ internal class AgentLocalTools(
                     textResult(appLaunchTools.presentToUser(args))
                 }
                 "ask_choice" -> textResult(askChoice(args))
-                "copy_to_clipboard" -> textResult(copyToClipboard(args))
                 "open_uri" -> {
                     guiTools.clearObservation()
                     textResult(appLaunchTools.openUri(args))
@@ -438,24 +437,6 @@ internal class AgentLocalTools(
                 .put("message", "当前无法显示选项卡片（浮窗未就绪或本会话已有一张在等）；改用文字提问")
                 .toString()
         }
-    }
-
-    /** 复制卡片：只负责把内容弹出来，用户点不点都不影响任务继续。 */
-    private fun copyToClipboard(args: JSONObject): String {
-        val text = args.optString("text").takeIf(String::isNotBlank)
-            ?: throw InvalidToolArgumentException("text 不能为空")
-        val title = args.optString("title").trim().take(AgentChoiceMaxTextChars)
-        val shown = AgentInteraction.showCopyCard(title, text, conversationKey)
-        return JSONObject()
-            .put("ok", true)
-            .put("card_shown", shown)
-            .put("chars", text.length)
-            .put("message", if (shown) {
-                "已弹出复制卡片，用户点一下就写入剪贴板；不要再用 set_clipboard 重复写入"
-            } else {
-                "复制卡片未能显示；需要落到剪贴板时改用 set_clipboard"
-            })
-            .toString()
     }
 
     private fun executeForegroundIntent(toolName: String, action: () -> JSONObject): JSONObject {

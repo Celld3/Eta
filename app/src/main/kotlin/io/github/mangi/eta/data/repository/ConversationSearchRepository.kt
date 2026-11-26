@@ -41,6 +41,8 @@ internal object ConversationSearchRepository {
                     "tool" -> (4..6).any { column -> cursor.getString(column)?.contains(query, ignoreCase = true) == true }
                     "system_notice" -> cursor.getString(6)?.contains(query, ignoreCase = true) == true
                     "tool_summary" -> toolNamesMatch(cursor.getString(7), query)
+                    // 回执的「问了什么」存在 arguments_summary，答案在 content 里。
+                    "choice_receipt" -> cursor.getString(5)?.contains(query, ignoreCase = true) == true
                     else -> false
                 }
                 if (contentMatches || detailMatches) {
@@ -69,5 +71,5 @@ internal object ConversationSearchRepository {
         }
     }
 
-    private val textMessageTypes = setOf("user", "assistant", "thinking", "tool")
+    private val textMessageTypes = setOf("user", "assistant", "thinking", "tool", "choice_receipt")
 }

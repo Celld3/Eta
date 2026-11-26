@@ -18,7 +18,6 @@
     <string name="trace_arg_clear_text">Clear text</string>
     <string name="trace_arg_submit">Submit</string>
     <string name="trace_arg_get_clipboard">Read clipboard</string>
-    <string name="trace_arg_copy_to_clipboard">Copy to clipboard</string>
     <string name="trace_arg_search_apps">Search apps</string>
     <string name="trace_arg_launch_app">Open app</string>
     <string name="trace_arg_present_to_user">Present to main screen</string>

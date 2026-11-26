@@ -15,7 +15,6 @@ import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
-import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.agent.model.AgentFileReference
 import io.github.mangi.eta.agent.model.AgentFileReferencePolicy
 import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
@@ -60,6 +59,7 @@ import io.github.mangi.eta.ui.IncomingShareRequest
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.ChoiceReceiptMessageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
@@ -187,11 +187,6 @@ internal class AgentAppState(
     val pendingChoice: AgentChoiceRequest?
         get() = selectedConversationId?.let(pendingChoiceByConversation::get)
 
-    private var pendingCopyByConversation by mutableStateOf<Map<String, CopyCardRequest>>(emptyMap())
-
-    val pendingCopy: CopyCardRequest?
-        get() = selectedConversationId?.let(pendingCopyByConversation::get)
-
     var conversationPaneState by mutableStateOf(
         ConversationPaneUiState(
             conversations = emptyList(),
@@ -213,7 +208,6 @@ internal class AgentAppState(
         refreshConversationSummaries()
         observeRuntimeSelection()
         observePendingChoice()
-        observePendingCopy()
         observeDefaultReasoningPreferences()
         observeCharacterUpdates()
         runtimeRecoveryInProgress.set(true)
@@ -233,15 +227,6 @@ internal class AgentAppState(
             AgentRuntimeService.pendingChoice.collectLatest { requests ->
                 pendingChoiceByConversation = requests
                 syncChoiceTimeoutWithVisibility(requests.keys)
-            }
-        }
-    }
-
-    /** 订阅运行时发布的内嵌复制请求，驱动输入框上方复制卡片渲染。 */
-    private fun observePendingCopy() {
-        scope.launch {
-            AgentRuntimeService.pendingCopy.collectLatest { requests ->
-                pendingCopyByConversation = requests
             }
         }
     }
@@ -1649,24 +1634,45 @@ internal class AgentAppState(
      */
     private fun cancelInteractionCardsFor(conversationId: String) {
         pendingChoiceByConversation = pendingChoiceByConversation - conversationId
-        pendingCopyByConversation = pendingCopyByConversation - conversationId
         AgentInteraction.resolveChoice(AgentChoiceResult.Cancelled, conversationId)
     }
 
     /** 内嵌选项面板的结论回传给阻塞中的工具线程。 */
     fun resolveChoice(result: AgentChoiceResult) {
         /* 只结算当前会话那一张：切到别的会话时界面看不到这张卡，也就不该能替它作答。 */
-        selectedConversationId?.let { key -> AgentInteraction.resolveChoice(result, key) }
+        val key = selectedConversationId ?: return
+        recordChoiceReceipt(key, pendingChoice, result)
+        AgentInteraction.resolveChoice(result, key)
     }
 
-    /** 内嵌复制卡片收起（用户点关闭/复制后自动收起），清空当前会话的复制请求状态。 */
-    fun dismissCopyCard() {
-        selectedConversationId?.let { key ->
-            pendingCopyByConversation = pendingCopyByConversation - key
-            /* 请求状态由运行时发布、界面只读，光清本地 map 会在下一次无关发布时被复原；
-               必须回传给宿主把该会话的请求真正摘掉。 */
-            AgentInteraction.dismissCopyCard(key)
-        }
+    /**
+     * 把这一问一答留在对话里。
+     *
+     * 卡片一收，用户就看不出自己刚才选了什么；留一条轻量回执既能事后核对，
+     * 也不改动模型上下文（history 由运行时维护）与分支边界。
+     */
+    private fun recordChoiceReceipt(
+        conversationId: String,
+        request: AgentChoiceRequest?,
+        result: AgentChoiceResult,
+    ) {
+        val answer = when (result) {
+            is AgentChoiceResult.Selected -> result.title
+            is AgentChoiceResult.CustomInput -> result.text
+            else -> return
+        }.trim()
+        if (answer.isEmpty()) return
+        val receipt = ChoiceReceiptMessageUi(
+            id = "choice-receipt-${UUID.randomUUID()}",
+            question = request?.title.orEmpty().trim(),
+            answer = answer,
+            isCustomInput = result is AgentChoiceResult.CustomInput,
+        )
+        val state = conversationsById[conversationId] ?: return
+        if (!state.isConversationLoaded) return
+        updateConversation(conversationId, state.copy(messages = state.messages + receipt))
+        refreshConversationSummaries()
+        persistConversations()
     }
 
     fun interruptAndSendCurrentMessage(submittedText: String? = null) {

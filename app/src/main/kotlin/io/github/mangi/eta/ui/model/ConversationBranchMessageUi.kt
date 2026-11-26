@@ -13,6 +13,7 @@ internal fun List<AgentChatMessageUi>.branchMessageOutline(): List<ConversationB
             is ThinkingMessageUi -> "thinking"
             is ToolActivityMessageUi -> "tool"
             is ToolSummaryMessageUi -> "tool_summary"
+            is ChoiceReceiptMessageUi -> "choice_receipt"
             else -> ""
         },
         hasContent = message is AgentMessageUi && message.content.isNotBlank() && !message.isStreaming,

@@ -30,7 +30,6 @@ internal fun buildToolsState(context: Context): AgentToolsUiState =
                     ToolItemUi("type_text", context.getString(R.string.tool_ui_enter_text_ae47ab), context.getString(R.string.tool_ui_type_text_summary)),
                     ToolItemUi("wait_for_text", context.getString(R.string.tool_ui_wait_for_text_9e9a54), context.getString(R.string.tool_ui_wait_for_the_specified_text_to_appear_on_the_scr_43f9b0)),
                     ToolItemUi("ask_choice", context.getString(R.string.tool_ask_choice), context.getString(R.string.tool_ask_choice_description)),
-                    ToolItemUi("copy_to_clipboard", context.getString(R.string.tool_copy_to_clipboard), context.getString(R.string.tool_copy_to_clipboard_description)),
                     ToolItemUi("set_clipboard", context.getString(R.string.tool_set_clipboard), context.getString(R.string.ui_misc_tool_set_clipboard_desc)),
                     ToolItemUi("get_clipboard", context.getString(R.string.tool_get_clipboard), context.getString(R.string.ui_misc_tool_get_clipboard_desc)),
                 ),

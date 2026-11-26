@@ -12,7 +12,6 @@ import org.json.JSONObject
  */
 internal object AgentInteractionToolCatalog {
     const val ASK_CHOICE = "ask_choice"
-    const val COPY_TO_CLIPBOARD = "copy_to_clipboard"
 
     fun appendTo(tools: JSONArray) {
         tools
@@ -72,23 +71,6 @@ internal object AgentInteractionToolCatalog {
                                 ),
                         )
                         .put("required", JSONArray().put("title").put("options")),
-                ),
-            )
-            .put(
-                AgentToolSchema.function(
-                    name = COPY_TO_CLIPBOARD,
-                    description = "把一段要落地的正文弹成带复制按钮的小卡片，用户点一下即写入剪贴板；" +
-                        "不阻塞后续工作、不占全屏、不切应用。适合较长的粘贴目标（地址、命令、配置、代码、成段文字），" +
-                        "短到一两个词直接用 type_text 或 set_clipboard。",
-                    parameters = JSONObject()
-                        .put("type", "object")
-                        .put(
-                            "properties",
-                            JSONObject()
-                                .put("text", JSONObject().put("type", "string").put("maxLength", 20_000).put("description", "要复制的内容，原样写入剪贴板。"))
-                                .put("title", JSONObject().put("type", "string").put("maxLength", 80).put("description", "可选，卡片标题，默认“复制这段”。")),
-                        )
-                        .put("required", JSONArray().put("text")),
                 ),
             )
     }

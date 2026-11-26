@@ -94,8 +94,6 @@ import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentInlineChoicePanel
-import io.github.mangi.eta.agent.overlay.AgentInlineCopyCard
-import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.markdown.EditorialLineHeightStyle
@@ -183,8 +181,6 @@ internal fun AgentChatInputBar(
     onChoiceSelect: (Int) -> Unit = {},
     onChoiceCustomInput: (String) -> Unit = {},
     onChoiceDismiss: () -> Unit = {},
-    pendingCopy: CopyCardRequest? = null,
-    onCopyDismiss: () -> Unit = {},
     glassBackdrop: Backdrop? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -369,28 +365,7 @@ internal fun AgentChatInputBar(
                     onSelect = onChoiceSelect,
                     onCustomInput = onChoiceCustomInput,
                     onDismiss = onChoiceDismiss,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-            }
-        }
-
-        var lastCopy by remember { mutableStateOf<CopyCardRequest?>(null) }
-        if (pendingCopy != null) lastCopy = pendingCopy
-        AnimatedVisibility(
-            visible = pendingCopy != null,
-            enter = slideInVertically(
-                animationSpec = tween(240, easing = FastOutSlowInEasing),
-                initialOffsetY = { it / 4 },
-            ) + fadeIn(tween(200)),
-            exit = slideOutVertically(
-                animationSpec = tween(200, easing = FastOutLinearInEasing),
-                targetOffsetY = { it / 4 },
-            ) + fadeOut(tween(160)),
-        ) {
-            lastCopy?.let { copy ->
-                AgentInlineCopyCard(
-                    request = copy,
-                    onDismiss = onCopyDismiss,
+                    glassBackdrop = glassBackdrop,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }

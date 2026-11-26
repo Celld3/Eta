@@ -8,7 +8,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
-import io.github.mangi.eta.agent.overlay.CopyCardRequest
 import java.util.concurrent.RejectedExecutionException
 import android.annotation.SuppressLint
 import android.app.Service
@@ -199,11 +198,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         displayedRun = null
         AgentInteraction.detach(this)
-        /* 服务没了，界面不能再挂着任何一张等作答的卡片：选项卡片先摘键再把等待中的
-           调用方以 Unavailable 放行，否则工具线程会一直等到超时；复制卡片不阻塞，
-           没有会话能在服务死后重新发布它，一并清空。 */
+        /* 服务没了，界面不能再挂着任何一张等作答的卡片：先摘键再把等待中的
+           调用方以 Unavailable 放行，否则工具线程会一直等到超时。 */
         pendingChoiceState.value = pendingChoiceState.value - choiceSessions.keys.toSet()
-        pendingCopyState.value = emptyMap()
         choiceSessions.values.forEach { it.finish(AgentChoiceResult.Unavailable) }
         choiceSessions = emptyMap()
         serviceScope.cancel()
@@ -1327,28 +1324,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
     }
 
-    override fun showCopyCard(title: String, content: String, conversationKey: String): Boolean {
-        if (destroyed || content.isBlank()) return false
-        /* 同选项卡片：没有会话归属的运行没有可渲染的位置，直接让调用方退回 set_clipboard。 */
-        if (AgentConversationIdentity.isRunFallbackKey(conversationKey)) return false
-        // 内嵌复制卡片：不再创建浮窗，改为发布请求，UI 层订阅 pendingCopy 渲染。
-        pendingCopyState.value = pendingCopyState.value + (
-            conversationKey to CopyCardRequest(title, content, conversationKey)
-        )
-        return true
-    }
-
     /** UI 层点选/自定义输入/取消后，把结论回传给阻塞中的调用方。 */
     override fun resolveChoice(result: AgentChoiceResult, conversationKey: String) {
         mainHandler.post {
             choiceSessions[conversationKey]?.pending = result
             dismantleChoiceCard(conversationKey, result)
         }
-    }
-
-    /** UI 层收起复制卡片后清掉该会话的请求；服务没起或该会话本来就没有卡片时无事可做。 */
-    override fun dismissCopyCard(conversationKey: String) {
-        mainHandler.post { pendingCopyState.value = pendingCopyState.value - conversationKey }
     }
 
     /**
@@ -1523,10 +1504,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private val pendingChoiceState = MutableStateFlow<Map<String, AgentChoiceRequest>>(emptyMap())
         /** 按会话归属的待作答卡片；UI 只取当前会话那一张。 */
         val pendingChoice = pendingChoiceState.asStateFlow()
-
-        // 内嵌复制卡片：同选项面板，不再走系统浮窗。
-        private val pendingCopyState = MutableStateFlow<Map<String, CopyCardRequest>>(emptyMap())
-        val pendingCopy = pendingCopyState.asStateFlow()
 
         /**
          * 切走某个会话时暂停它那张卡片的超时计时。

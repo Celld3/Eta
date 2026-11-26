@@ -115,7 +115,6 @@ internal data class SubagentProfile(
             "terminal_daemon",
             // 子智能体的运行没有自己的浮窗，弹卡片会打断用户当前正在做的事。
             "ask_choice",
-            "copy_to_clipboard",
         )
 
         val READ_ONLY_TOOLS = setOf(

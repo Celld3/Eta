@@ -18,7 +18,6 @@
     <string name="trace_arg_clear_text">清空文本</string>
     <string name="trace_arg_submit">提交</string>
     <string name="trace_arg_get_clipboard">读取剪贴板</string>
-    <string name="trace_arg_copy_to_clipboard">复制到剪贴板</string>
     <string name="trace_arg_search_apps">搜索应用</string>
     <string name="trace_arg_launch_app">打开应用</string>
     <string name="trace_arg_present_to_user">呈现到主屏</string>

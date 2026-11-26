@@ -39,6 +39,9 @@ private fun AgentChatMessageUi.matches(
 
     is ToolSummaryMessageUi -> tools.any { it.contains(query, ignoreCase = true) }
 
+    is ChoiceReceiptMessageUi ->
+        question.contains(query, ignoreCase = true) || answer.contains(query, ignoreCase = true)
+
     is SystemNoticeMessageUi ->
         noticeText(code).contains(query, ignoreCase = true) ||
             detail?.contains(query, ignoreCase = true) == true

@@ -8,6 +8,7 @@ import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
 import io.github.mangi.eta.agent.runtime.GuiControlStatus
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.ChoiceReceiptMessageUi
 import io.github.mangi.eta.ui.model.ConversationModeUi
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
@@ -70,6 +71,9 @@ internal class ConversationSummaryProjector(
                             }
                         is AgentMessageUi -> lastMessage.content.ifBlank {
                             appContext.getString(R.string.conversation_preview_reasoning)
+                        }
+                        is ChoiceReceiptMessageUi -> lastMessage.answer.ifBlank {
+                            appContext.getString(R.string.conversation_preview_empty)
                         }
                         is SystemNoticeMessageUi -> noticeText(lastMessage.code)
                         is ThinkingMessageUi -> appContext.getString(R.string.conversation_preview_reasoning)

@@ -5,6 +5,7 @@ import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
 import io.github.mangi.eta.core.AppStrings
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.ChoiceReceiptMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
@@ -41,6 +42,8 @@ internal object ConversationMarkdownExporter {
         val noticeRuntimeFailed: String,
         val noticeInterrupted: String,
         val noticeContextCompaction: String = AppStrings.get(R.string.context_compaction, "上下文压缩"),
+        /** 回执标题缺失时的兜底前缀。 */
+        val choiceReceiptFallback: String = AppStrings.get(R.string.choice_receipt_selected, "你选择了"),
     ) {
         fun toolStatus(status: ToolActivityStatusUi): String = when (status) {
             ToolActivityStatusUi.Running -> toolStatusRunning
@@ -122,6 +125,11 @@ internal object ConversationMarkdownExporter {
 
         is ToolSummaryMessageUi -> listOf(labels.toolsLineFormat.format(tools.joinToString(", ")))
             .toBlockquote()
+
+        is ChoiceReceiptMessageUi -> listOf(
+            question.ifBlank { labels.choiceReceiptFallback },
+            answer,
+        ).toBlockquote()
 
         is SystemNoticeMessageUi -> buildList {
             add(labels.notice(code))

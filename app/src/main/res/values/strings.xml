@@ -1112,6 +1112,8 @@
   <string name="chat_input_hint">Ask Eta to do something</string>
   <string name="chat_stop">Stop</string>
   <string name="chat_send">Send</string>
+  <string name="choice_receipt_selected">You chose</string>
+  <string name="choice_receipt_custom_input">You replied</string>
   <string name="chat_reasoning_effort">Reasoning effort: %1$s</string>
   <string name="status_unsupported">Unsupported</string>
   <string name="attachment_image">Image</string>
@@ -1469,13 +1471,8 @@
   <string name="chat_queue_files_only">[%1$d 个文件]</string>
     <string name="overlay_choice_dismiss">Cancel</string>
     <string name="overlay_choice_recommended">Suggested</string>
-    <string name="overlay_copy_title">Copy this</string>
-    <string name="overlay_copy_action">Copy</string>
-    <string name="overlay_copy_close">Close</string>
     <string name="tool_ask_choice">Ask with options</string>
     <string name="tool_ask_choice_description">Show a small card with 2-4 tappable options when the answer really depends on the user; the tap returns as the tool result.</string>
-    <string name="tool_copy_to_clipboard">Copy card</string>
-    <string name="tool_copy_to_clipboard_description">Pop a small card with text and a one-tap copy button, without taking over the screen.</string>
     <string name="data_backup_auto_title">Automatic backup</string>
     <string name="data_backup_auto_enabled">Enable automatic backup</string>
     <string name="data_backup_auto_enabled_summary">Runs once a day at the time you pick, keeping conversations, memory, and skills</string>

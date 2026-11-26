@@ -9,7 +9,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,21 +22,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.HelpOutline
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,23 +39,35 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
-import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.glass.glassPanel
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
+import top.yukonga.miuix.kmp.icon.glass.ChevronForward
+import top.yukonga.miuix.kmp.icon.glass.Close
+import top.yukonga.miuix.kmp.icon.glass.Info
+import top.yukonga.miuix.kmp.material.GlassDefaults
+import top.yukonga.miuix.kmp.material.GlassEdgeStrokes
+import top.yukonga.miuix.kmp.material.GlassMaterials
+import top.yukonga.miuix.kmp.material.GlassShadows
+import top.yukonga.miuix.kmp.material.GlassShape
+import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 一个可点选的选项；推荐项由模型标注，界面只做轻量强调。 */
@@ -96,14 +99,6 @@ internal data class AgentChoiceRequest(
     }
 }
 
-/** 复制卡片的请求：标题 + 待复制正文。与选项卡片同构，内嵌在对话界面。 */
-internal data class CopyCardRequest(
-    val title: String,
-    val content: String,
-    /** 归属会话身份；与 [AgentChoiceRequest.conversationKey] 同一套取值。 */
-    val conversationKey: String = "",
-)
-
 /** 选择卡片的终态；不可用时调用方退化为文字提问。 */
 sealed interface AgentChoiceResult {
     data class Selected(val index: Int, val title: String) : AgentChoiceResult
@@ -120,6 +115,48 @@ sealed interface AgentChoiceResult {
  */
 internal const val InteractionCardExitMs = 190L
 
+/** 内嵌卡片与输入栏共用的圆角；两边要一致，否则并排看会像两套容器。 */
+private val InteractionCardCornerRadius = 24.dp
+
+/** 卡片内部行与自定义输入框的圆角，比整卡小一档但同一曲率。 */
+private val ChoiceRowCornerRadius = 16.dp
+
+/**
+ * 内嵌卡片的外壳：沿用聊天输入条的玻璃写法（[GlassShape] + squircle 兜底），
+ * 让卡片和输入栏在同一界面里是同一族容器，而不是「同样 miuix 但看着不像」。
+ */
+@Composable
+private fun Modifier.interactionCardSurface(backdrop: Backdrop?): Modifier {
+    val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    // 与输入栏同一套兜底底色：浅色下 surfaceContainer 和 surface 同值时给一点灰，避免飘在纯白上。
+    val fallbackBg = if (!isDark && MiuixTheme.colorScheme.surfaceContainer == MiuixTheme.colorScheme.surface) {
+        Color(0xFFF5F6F8)
+    } else {
+        MiuixTheme.colorScheme.surfaceContainer
+    }
+    val shape = remember { GlassShape(InteractionCardCornerRadius) }
+    return this.glassPanel(
+        backdrop = backdrop,
+        shape = shape,
+        style = GlassDefaults.style(isDark),
+        material = GlassMaterials.puredThinGlass(isDark),
+        stroke = GlassEdgeStrokes.forTheme(
+            isDark = isDark,
+            light = GlassEdgeStrokes.SmallLight,
+            dark = GlassEdgeStrokes.SmallDark,
+        ),
+        shadow = GlassShadows.Regular,
+        shading = false,
+        fallback = Modifier
+            .squircleSurface(color = fallbackBg, cornerRadius = InteractionCardCornerRadius)
+            .squircleBorder(
+                width = 0.5.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.4f),
+                cornerRadius = InteractionCardCornerRadius,
+            ),
+    )
+}
+
 @Composable
 private fun ChoiceRow(
     option: AgentChoiceOption,
@@ -127,16 +164,21 @@ private fun ChoiceRow(
     onChosen: () -> Unit,
 ) {
     val accent = MiuixTheme.colorScheme.primary
+    // 行内小方块的圆角也走 squircle，和整卡、输入栏的曲率是一套。
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                if (chosen) accent.copy(alpha = 0.12f) else MiuixTheme.colorScheme.secondaryContainer,
+            .squircleSurface(
+                color = if (chosen) accent.copy(alpha = 0.12f) else MiuixTheme.colorScheme.secondaryContainer,
+                cornerRadius = ChoiceRowCornerRadius,
             )
             .then(
                 if (option.recommended && !chosen) {
-                    Modifier.border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                    Modifier.squircleBorder(
+                        width = 1.dp,
+                        color = accent.copy(alpha = 0.5f),
+                        cornerRadius = ChoiceRowCornerRadius,
+                    )
                 } else {
                     Modifier
                 },
@@ -175,7 +217,7 @@ private fun ChoiceRow(
         if (chosen) {
             Spacer(Modifier.width(10.dp))
             Icon(
-                imageVector = Icons.Rounded.Check,
+                imageVector = MiuixIcons.Basic.Check,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
                 tint = accent,
@@ -183,12 +225,6 @@ private fun ChoiceRow(
         }
     }
 }
-
-/** 点「复制」后「已复制」状态的停留时长。 */
-private const val CopyCardAfterCopyMs = 900L
-
-/** 未点复制时，复制卡片自动收起的超时。 */
-private const val CopyCardAutoDismissMs = 5_000L
 
 /** 内嵌面板选项区的固定最大高度；超出后由 LazyColumn 内部滚动。 */
 private val InlineChoiceListMaxHeight = 220.dp
@@ -209,6 +245,7 @@ internal fun AgentInlineChoicePanel(
     onCustomInput: (String) -> Unit,
     onDismiss: () -> Unit,
     onToggleCollapse: () -> Unit = {},
+    glassBackdrop: Backdrop? = null,
     modifier: Modifier = Modifier,
 ) {
     var settled by remember { mutableStateOf(false) }
@@ -233,13 +270,7 @@ internal fun AgentInlineChoicePanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(MiuixTheme.colorScheme.surface)
-            .border(
-                0.5.dp,
-                MiuixTheme.colorScheme.outline.copy(alpha = 0.4f),
-                RoundedCornerShape(22.dp),
-            ),
+            .interactionCardSurface(glassBackdrop),
     ) {
         // 顶部 header：图标 + 标题 + 收起/关闭。
         Row(
@@ -254,7 +285,7 @@ internal fun AgentInlineChoicePanel(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
+                    imageVector = MiuixIcons.Glass.Info,
                     contentDescription = null,
                     modifier = Modifier.size(15.dp),
                     tint = MiuixTheme.colorScheme.primary,
@@ -277,13 +308,10 @@ internal fun AgentInlineChoicePanel(
                 minHeight = 34.dp,
             ) {
                 Icon(
-                    imageVector = if (collapsed) {
-                        Icons.Rounded.KeyboardArrowUp
-                    } else {
-                        Icons.Rounded.KeyboardArrowDown
-                    },
+                    imageVector = MiuixIcons.Glass.ChevronForward,
                     contentDescription = null,
-                    modifier = Modifier.size(19.dp),
+                    // 收起时朝上（提示可展开），展开时朝下。
+                    modifier = Modifier.size(19.dp).rotate(if (collapsed) -90f else 90f),
                     tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
             }
@@ -293,7 +321,7 @@ internal fun AgentInlineChoicePanel(
                 minHeight = 34.dp,
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Close,
+                    imageVector = MiuixIcons.Glass.Close,
                     contentDescription = null,
                     modifier = Modifier.size(19.dp),
                     tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
@@ -341,12 +369,14 @@ internal fun AgentInlineChoicePanel(
                         state = customField,
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MiuixTheme.colorScheme.surfaceContainer)
-                            .border(
-                                0.5.dp,
-                                MiuixTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                RoundedCornerShape(18.dp),
+                            .squircleSurface(
+                                color = MiuixTheme.colorScheme.surfaceContainer,
+                                cornerRadius = ChoiceRowCornerRadius,
+                            )
+                            .squircleBorder(
+                                width = 0.5.dp,
+                                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                cornerRadius = ChoiceRowCornerRadius,
                             )
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -389,117 +419,6 @@ internal fun AgentInlineChoicePanel(
                 }
 
             }
-        }
-    }
-}
-
-
-/**
- * 对话输入框上方内嵌的复制卡片。
- *
- * 不阻塞运行：用户点不点都继续，卡片自己收起；点「复制」写入剪贴板并短暂
- * 显示「已复制」再收起。
- * 复用外层的展开/收缩动画，自身只做静态渲染。
- */
-@Composable
-internal fun AgentInlineCopyCard(
-    request: CopyCardRequest,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var copied by remember { mutableStateOf(false) }
-    @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
-
-    // 进场即计时：点复制后切到「已复制」短暂停留，否则超时自动收起。
-    // 用 key(copied) 保证切换时旧计时被彻底取消，不会两个 onDismiss 撞在一起。
-    LaunchedEffect(copied) {
-        if (copied) {
-            delay(CopyCardAfterCopyMs)
-            onDismiss()
-        } else {
-            delay(CopyCardAutoDismissMs)
-            onDismiss()
-        }
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(MiuixTheme.colorScheme.surface)
-            .border(
-                0.5.dp,
-                MiuixTheme.colorScheme.outline.copy(alpha = 0.4f),
-                RoundedCornerShape(22.dp),
-            ),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.ContentCopy,
-                    contentDescription = null,
-                    modifier = Modifier.size(15.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = request.title.ifBlank { stringResource(R.string.overlay_copy_title) },
-                color = MiuixTheme.colorScheme.onSurface,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(
-                onClick = onDismiss,
-                minWidth = 34.dp,
-                minHeight = 34.dp,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp),
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                )
-            }
-        }
-        Text(
-            text = request.content,
-            style = MiuixTheme.textStyles.footnote2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            maxLines = 3,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            TextButton(
-                text = stringResource(if (copied) R.string.copy_copied else R.string.overlay_copy_action),
-                onClick = {
-                    clipboard.setText(AnnotatedString(request.content))
-                    copied = true
-                },
-                modifier = Modifier.weight(1f),
-                minHeight = 40.dp,
-                colors = ButtonDefaults.textButtonColorsPrimary(),
-            )
-            TextButton(
-                text = stringResource(R.string.overlay_copy_close),
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f),
-                minHeight = 40.dp,
-            )
         }
     }
 }

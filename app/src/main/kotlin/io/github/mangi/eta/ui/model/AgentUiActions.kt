@@ -36,7 +36,6 @@ sealed interface AgentHomeAction {
     data object OpenBrowser : AgentHomeAction
     data object ExpandRunTrace : AgentHomeAction
     data class ResolveChoice(val result: AgentChoiceResult) : AgentHomeAction
-    data object DismissCopyCard : AgentHomeAction
 }
 
 sealed interface PermissionHealthAction {

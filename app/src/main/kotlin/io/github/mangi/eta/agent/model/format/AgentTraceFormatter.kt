@@ -64,11 +64,6 @@ internal class AgentTraceFormatter {
             "launch_app" -> AppStrings.get(R.string.trace_arg_launch_app, "打开应用")
             "present_to_user" -> AppStrings.get(R.string.trace_arg_present_to_user, "呈现到主屏")
             "ask_choice" -> summarizeChoiceArguments(toolCall.argumentsJson)
-            "copy_to_clipboard" -> summarizeTextLength(
-                AppStrings.get(R.string.trace_arg_copy_to_clipboard, "复制到剪贴板"),
-                toolCall.argumentsJson,
-                "text",
-            )
             "get_current_context" -> AppStrings.get(R.string.trace_arg_get_current_context, "读取时间与位置")
             "observe_screen" -> summarizeObservationArguments(toolCall.argumentsJson)
             "tap" -> summarizePointArguments(

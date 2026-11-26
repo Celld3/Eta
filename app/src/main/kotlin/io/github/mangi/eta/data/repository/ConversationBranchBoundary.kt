@@ -19,7 +19,7 @@ internal object ConversationBranchBoundary {
                 }
                 "assistant" -> candidate = message.id.takeIf { message.hasContent }
                 "system_notice" -> if (message.noticeCode != "context_compaction") candidate = null
-                "tool_summary" -> Unit
+                "tool_summary", "choice_receipt" -> Unit
                 else -> candidate = null
             }
         }

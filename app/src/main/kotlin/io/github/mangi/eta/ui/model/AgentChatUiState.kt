@@ -60,6 +60,23 @@ data class UserMessageUi(
     val isEdited: Boolean = false,
 ) : AgentChatMessageUi
 
+/**
+ * 用户在选项卡片上作答后留在对话里的痕迹。
+ *
+ * 只为「我记得我选了什么、发给了什么」服务：不写入模型上下文（history 来自运行时），
+ * 也不参与分支、编辑与最终结果的判定，仅随消息时间线持久化。
+ */
+@Immutable
+data class ChoiceReceiptMessageUi(
+    override val id: String,
+    /** 卡片标题，即这次选择要定的事。 */
+    val question: String,
+    /** 用户给出的内容：点选的选项标题，或自定义输入原文。 */
+    val answer: String,
+    /** 走的是内嵌输入框而不是点选。 */
+    val isCustomInput: Boolean = false,
+) : AgentChatMessageUi
+
 @Immutable
 data class AgentMessageUi(
     override val id: String,

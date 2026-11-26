@@ -24,6 +24,7 @@ import io.github.mangi.eta.core.safeStackTrace
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.ChoiceReceiptMessageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
@@ -339,6 +340,10 @@ internal object AgentConversationStore {
             is UserMessageUi -> message.copy(content = message.content.take(256), images = emptyList())
             is AgentMessageUi -> message.copy(content = message.content.take(256), searchSuggestionsHtml = emptyList())
             is ThinkingMessageUi -> message.copy(content = message.content.take(256))
+            is ChoiceReceiptMessageUi -> message.copy(
+                question = message.question.take(256),
+                answer = message.answer.take(256),
+            )
             is ToolActivityMessageUi -> message.copy(
                 argumentsSummary = message.argumentsSummary.take(256), command = message.command?.take(256),
                 resultSummary = message.resultSummary?.take(256),
@@ -526,6 +531,16 @@ internal object AgentConversationStore {
                 imageCount = imageCount,
             )
 
+            is ChoiceReceiptMessageUi -> ConversationMessageEntity(
+                id = id,
+                conversationId = conversationId,
+                sortIndex = sortIndex,
+                type = TYPE_CHOICE_RECEIPT,
+                content = answer,
+                argumentsSummary = question,
+                toolStatus = if (isCustomInput) CHOICE_RECEIPT_CUSTOM else CHOICE_RECEIPT_SELECTED,
+            )
+
             is ToolSummaryMessageUi -> ConversationMessageEntity(
                 id = id,
                 conversationId = conversationId,
@@ -619,6 +634,13 @@ internal object AgentConversationStore {
                 imageCount = imageCount,
             )
 
+            TYPE_CHOICE_RECEIPT -> ChoiceReceiptMessageUi(
+                id = id,
+                question = argumentsSummary.orEmpty(),
+                answer = content,
+                isCustomInput = toolStatus == CHOICE_RECEIPT_CUSTOM,
+            )
+
             TYPE_TOOL_SUMMARY -> ToolSummaryMessageUi(
                 id = id,
                 tools = toolsJson.toStringList(),
@@ -674,6 +696,9 @@ internal object AgentConversationStore {
     private const val TYPE_THINKING = "thinking"
     private const val TYPE_TOOL = "tool"
     private const val TYPE_TOOL_SUMMARY = "tool_summary"
+    private const val TYPE_CHOICE_RECEIPT = "choice_receipt"
+    private const val CHOICE_RECEIPT_SELECTED = "selected"
+    private const val CHOICE_RECEIPT_CUSTOM = "custom"
     private const val MESSAGE_LOAD_PAGE_SIZE = 128
     private const val LEGACY_UNNAMED_TITLE = "新对话"
 }

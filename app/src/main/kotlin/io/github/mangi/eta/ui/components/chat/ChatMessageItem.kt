@@ -102,6 +102,7 @@ import io.github.mangi.eta.ui.markdown.StreamingMarkdownState
 import io.github.mangi.eta.ui.markdown.THINKING_LINE_HEIGHT_SP
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.ChoiceReceiptMessageUi
 import io.github.mangi.eta.ui.model.RunTraceMessageUi
 import io.github.mangi.eta.ui.model.SuggestionChipsMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
@@ -370,6 +371,7 @@ internal fun ChatMessageItem(
         }
         is ToolSummaryMessageUi -> ToolSummaryInline(message = message, modifier = modifier, compact = compact)
         is SuggestionChipsMessageUi -> SuggestionChipsRow(message = message, onSuggestionClick = onSuggestionClick, modifier = modifier)
+        is ChoiceReceiptMessageUi -> ChoiceReceiptRow(message = message, modifier = modifier)
     }
 }
 
@@ -822,6 +824,79 @@ private fun ContextCompactionMarker(
         }
     }
 }
+
+// ── 选项回执：把「我选了什么」留在对话里 ──────────────────────────────
+
+/**
+ * 用户在内嵌卡片上作答后留下的一条回执。
+ *
+ * 靠右、比正文气泡淡一档，只描述「这次定了什么、我答了什么」，
+ * 不参与模型上下文，也不作为可编辑/可复制的对话正文。
+ */
+@Composable
+private fun ChoiceReceiptRow(
+    message: ChoiceReceiptMessageUi,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 316.dp)
+                .clip(ChoiceReceiptShape)
+                .background(
+                    MiuixTheme.colorScheme.primary.copy(alpha = if (isDark) 0.16f else 0.09f),
+                    ChoiceReceiptShape,
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = MiuixTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                val caption = message.question.takeIf(String::isNotBlank)
+                    ?: stringResource(
+                        if (message.isCustomInput) {
+                            R.string.choice_receipt_custom_input
+                        } else {
+                            R.string.choice_receipt_selected
+                        },
+                    )
+                Text(
+                    text = caption,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            SelectionContainer {
+                Text(
+                    text = message.answer,
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+private val ChoiceReceiptShape = RoundedCornerShape(
+    topStart = 16.dp,
+    topEnd = 16.dp,
+    bottomEnd = 4.dp,
+    bottomStart = 16.dp,
+)
 
 // ── Agent 结果 ───────────────────────────────────────────────────────
 

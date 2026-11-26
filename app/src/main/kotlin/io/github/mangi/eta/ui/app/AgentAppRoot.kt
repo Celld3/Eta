@@ -421,7 +421,6 @@ fun AgentAppRoot(
                                 state = agentState.homeState,
                                 modelPickerState = agentState.modelPickerState,
                                 pendingChoice = agentState.pendingChoice,
-                                pendingCopy = agentState.pendingCopy,
                                 isBranching = agentState.isBranchingCurrentConversation,
                                 conversationKey = agentState.conversationPaneState.selectedConversationId,
                                 topInset = shellPadding.calculateTopPadding(),
@@ -473,7 +472,6 @@ fun AgentAppRoot(
                                         AgentHomeAction.OpenBrowser -> openConversationBrowser()
                                         AgentHomeAction.ExpandRunTrace -> Unit
                                         is AgentHomeAction.ResolveChoice -> agentState.resolveChoice(action.result)
-                                        AgentHomeAction.DismissCopyCard -> agentState.dismissCopyCard()
                                     }
                                 },
                                 isLoadingConversation = agentState.isLoadingConversation,

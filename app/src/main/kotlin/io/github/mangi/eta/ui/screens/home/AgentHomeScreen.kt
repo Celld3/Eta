@@ -20,7 +20,6 @@ import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.roleplayChatUi
 import io.github.mangi.eta.agent.overlay.AgentChoiceRequest
 import io.github.mangi.eta.agent.overlay.AgentChoiceResult
-import io.github.mangi.eta.agent.overlay.CopyCardRequest
 
 /**
  * AgentChatHome：首屏为聊天主舞台。
@@ -35,7 +34,6 @@ internal fun AgentHomeScreen(
     conversationKey: String?,
     onAction: (AgentHomeAction) -> Unit,
     pendingChoice: AgentChoiceRequest? = null,
-    pendingCopy: CopyCardRequest? = null,
     isLoadingConversation: Boolean = false,
     conversationLoadFailed: Boolean = false,
     historyLoadState: ConversationHistoryLoadState = ConversationHistoryLoadState.Idle,
@@ -122,8 +120,6 @@ internal fun AgentHomeScreen(
                     onChoiceDismiss = {
                         onAction(AgentHomeAction.ResolveChoice(AgentChoiceResult.Cancelled))
                     },
-                    pendingCopy = pendingCopy,
-                    onCopyDismiss = { onAction(AgentHomeAction.DismissCopyCard) },
                     isDrawerOpen = isDrawerOpen,
                     modifier = modifier,
                 )

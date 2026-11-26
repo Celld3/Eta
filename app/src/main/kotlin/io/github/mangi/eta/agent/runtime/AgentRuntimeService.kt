@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.runtime
 
 import java.util.concurrent.Executors
 import android.os.SystemClock
+import android.provider.Settings
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference

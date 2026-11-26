@@ -10,7 +10,7 @@ import androidx.work.workDataOf
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.datastore.SettingsDataStore
-import io.github.mangi.eta.data.repository.EtaBackupRepository
+import io.github.mangi.eta.data.repository.backup.EtaBackupRepository
 import kotlinx.coroutines.CancellationException
 
 /**

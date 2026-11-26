@@ -1,4 +1,4 @@
-package io.github.mangi.eta.ui.voice
+package io.github.mangi.eta.ui.screens.voice
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding

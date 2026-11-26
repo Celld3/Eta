@@ -2,6 +2,11 @@ package io.github.mangi.eta.data.model
 
 import kotlinx.serialization.Serializable
 
+/** 界面缩放的可选区间；超出范围的值在读取时收敛，避免脏值把布局撑坏。 */
+const val MIN_INTERFACE_SCALE = 0.8f
+const val MAX_INTERFACE_SCALE = 1.1f
+const val DEFAULT_INTERFACE_SCALE = 1f
+
 @Serializable
 data class AppearanceSettings(
     val themeMode: AppearanceThemeMode = AppearanceThemeMode.SYSTEM,
@@ -71,3 +76,11 @@ enum class AppearanceAccentColor(val persistedValue: String) {
             entries.firstOrNull { it.persistedValue == value } ?: SYSTEM
     }
 }
+
+/** 把任意来源的缩放值收敛到可渲染区间；NaN 与无穷退回默认值。 */
+fun normalizeInterfaceScale(value: Float): Float =
+    if (value.isFinite()) {
+        value.coerceIn(MIN_INTERFACE_SCALE, MAX_INTERFACE_SCALE)
+    } else {
+        DEFAULT_INTERFACE_SCALE
+    }

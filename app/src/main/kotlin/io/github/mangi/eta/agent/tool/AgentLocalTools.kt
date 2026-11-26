@@ -19,7 +19,7 @@ import io.github.mangi.eta.agent.overlay.AgentChoiceResult
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
 import io.github.mangi.eta.agent.runtime.AgentInteraction
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
-import io.github.mangi.eta.agent.overlay.GestureIndicator
+import io.github.mangi.eta.agent.overlay.ui.GestureIndicator
 import io.github.mangi.eta.agent.model.catalog.AgentFileToolCatalog
 import io.github.mangi.eta.agent.model.catalog.AgentPhoneToolCatalog
 import io.github.mangi.eta.agent.model.catalog.AgentTerminalToolCatalog

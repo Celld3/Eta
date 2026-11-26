@@ -5,8 +5,8 @@ import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
-import io.github.mangi.eta.agent.voice.SpeechErrorCode
-import io.github.mangi.eta.agent.voice.SpeechFailure
+import io.github.mangi.eta.agent.voice.audio.SpeechErrorCode
+import io.github.mangi.eta.agent.voice.audio.SpeechFailure
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import java.io.File

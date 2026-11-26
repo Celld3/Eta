@@ -1,8 +1,8 @@
 package io.github.mangi.eta.agent.voice.local
 
 import android.content.Context
-import io.github.mangi.eta.agent.terminal.VerifiedArtifact
-import io.github.mangi.eta.agent.terminal.VerifiedArtifactDownloader
+import io.github.mangi.eta.agent.terminal.linux.VerifiedArtifact
+import io.github.mangi.eta.agent.terminal.linux.VerifiedArtifactDownloader
 import io.github.mangi.eta.core.AndroidAgentLogger
 import java.io.BufferedInputStream
 import java.io.File

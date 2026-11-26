@@ -1,4 +1,4 @@
-package io.github.mangi.eta.agent.model
+package io.github.mangi.eta.agent.model.catalog
 
 import org.json.JSONArray
 import org.json.JSONObject

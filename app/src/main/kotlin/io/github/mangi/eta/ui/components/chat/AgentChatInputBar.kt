@@ -1,10 +1,6 @@
 package io.github.mangi.eta.ui.components.chat
 
-import io.github.mangi.eta.ui.screens.voice.SpeechDictationButton
-import io.github.mangi.eta.ui.screens.voice.SpeechInputFeedback
 import io.github.mangi.eta.agent.voice.local.LocalRecognizerHolder
-import io.github.mangi.eta.ui.screens.voice.rememberSpeechInput
-import androidx.compose.ui.text.TextRange
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState

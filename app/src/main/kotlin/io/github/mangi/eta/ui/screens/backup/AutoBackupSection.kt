@@ -47,6 +47,7 @@ internal fun AutoBackupSection(
     onPickRetention: () -> Unit,
     onPickDirectory: (String?) -> Unit,
     onRequestExactAlarm: () -> Unit,
+    onRunNow: () -> Unit,
     onSelectHistory: (AutoBackupFile) -> Unit,
 ) {
     val directoryLauncher = rememberLauncherForActivityResult(
@@ -126,6 +127,12 @@ internal fun AutoBackupSection(
                     ),
                 )
             }
+            ArrowPreference(
+                title = stringResource(R.string.data_backup_auto_run_now),
+                summary = stringResource(R.string.data_backup_auto_run_now_summary),
+                enabled = !state.busy,
+                onClick = onRunNow,
+            )
         }
     }
 

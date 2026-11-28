@@ -1491,6 +1491,8 @@
     <string name="data_backup_auto_last_success">Last backup: succeeded at %1$s</string>
     <string name="data_backup_auto_last_failure">Last backup failed at %1$s (%2$s)</string>
     <string name="data_backup_auto_never">Not run yet</string>
+    <string name="data_backup_auto_run_now">Back up now</string>
+    <string name="data_backup_auto_run_now_summary">Runs in the background, keeps the current schedule</string>
     <string name="data_backup_auto_saf_failure">Copy to folder failed at %1$s (%2$s)</string>
     <string name="data_backup_history_title">Automatic backups</string>
     <string name="data_backup_history_empty">No automatic backups yet</string>

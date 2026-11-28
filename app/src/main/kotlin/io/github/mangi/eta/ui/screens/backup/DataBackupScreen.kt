@@ -51,6 +51,7 @@ internal fun DataBackupScreen(
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
     val autoBackup = remember { AutoBackupStore(context, scope) }
+    // 记录条目与手动导入走同一个确认框：导入会整库清空重建，不能一点就覆盖。
     var pendingHistory by remember { mutableStateOf<AutoBackupFile?>(null) }
     LaunchedEffect(Unit) { autoBackup.refresh() }
 
@@ -105,22 +106,30 @@ internal fun DataBackupScreen(
     } else {
         stringResource(R.string.action_import)
     }
+    val importDialogVisible = showImportDialog || pendingHistory != null
     val onDismissImport: () -> Unit = {
         if (!busy) {
             showImportDialog = false
             pendingImportUri = null
+            pendingHistory = null
         }
     }
     val onConfirmImport: () -> Unit = {
         val uri = pendingImportUri
-        if (uri != null) {
+        val historyEntry = pendingHistory
+        if (uri != null || historyEntry != null) {
             showImportDialog = false
             scope.launch {
                 busy = true
+                autoBackup.setBusy(true)
                 try {
-                    val input = context.contentResolver.openInputStream(uri)
-                        ?: error(context.getString(R.string.data_backup_file_open_failed))
-                    val summary = input.use { onImport(it) }
+                    val summary = if (historyEntry != null) {
+                        historyEntry.file.inputStream().use { onImport(it) }
+                    } else {
+                        val input = context.contentResolver.openInputStream(uri!!)
+                            ?: error(context.getString(R.string.data_backup_file_open_failed))
+                        input.use { onImport(it) }
+                    }
                     Toast.makeText(
                         context,
                         context.getString(
@@ -134,7 +143,9 @@ internal fun DataBackupScreen(
                     showFailure(throwable)
                 } finally {
                     pendingImportUri = null
+                    pendingHistory = null
                     busy = false
+                    autoBackup.setBusy(false)
                 }
             }
         }
@@ -145,7 +156,7 @@ internal fun DataBackupScreen(
         onBack = onBack,
         overlay = {
             GlassDialog(
-                show = showImportDialog,
+                show = importDialogVisible,
                 backdrop = currentGlassOverlayBackdrop(),
                 title = stringResource(R.string.data_backup_import_confirm_title),
                 summary = stringResource(R.string.data_backup_import_confirm_summary),
@@ -218,29 +229,10 @@ internal fun DataBackupScreen(
                 onRequestExactAlarm = {
                     runCatching { context.startActivity(autoBackup.exactAlarmSettingsIntent()) }
                 },
+                onRunNow = autoBackup::runNow,
                 onSelectHistory = { entry ->
-                    // 历史条目就是一份完整备份文件，走与手动导入同一条 onImport 路径。
+                    // 不直接导入：历史条目也是一份完整备份，点错就会整库覆盖。
                     pendingHistory = entry
-                    scope.launch {
-                        busy = true
-                        try {
-                            val summary = entry.file.inputStream().use { onImport(it) }
-                            Toast.makeText(
-                                context,
-                                context.getString(
-                                    R.string.data_backup_imported,
-                                    summary.conversationCount,
-                                    summary.providerCount,
-                                ),
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        } catch (throwable: Throwable) {
-                            showFailure(throwable)
-                        } finally {
-                            pendingHistory = null
-                            busy = false
-                        }
-                    }
                 },
             )
         }

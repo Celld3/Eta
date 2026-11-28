@@ -1472,6 +1472,8 @@
     <string name="data_backup_auto_last_success">上次备份：%1$s 成功</string>
     <string name="data_backup_auto_last_failure">上次备份：%1$s 失败（%2$s）</string>
     <string name="data_backup_auto_never">尚未运行</string>
+    <string name="data_backup_auto_run_now">立即备份</string>
+    <string name="data_backup_auto_run_now_summary">后台执行一次，不改变现有计划</string>
     <string name="data_backup_auto_saf_failure">复制到文件夹失败：%1$s（%2$s）</string>
     <string name="data_backup_history_title">自动备份记录</string>
     <string name="data_backup_history_empty">还没有自动备份</string>

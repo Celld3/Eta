@@ -8,7 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.mangi.eta.core.AndroidAgentLogger
+import io.github.mangi.eta.data.backup.AutoBackupBootstrap
 import io.github.mangi.eta.data.backup.AutoBackupScheduler
+import io.github.mangi.eta.data.backup.AutoBackupWorker
 import io.github.mangi.eta.data.backup.BackupHistoryStore
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import kotlinx.coroutines.CoroutineScope
@@ -72,6 +74,16 @@ internal class AutoBackupStore(
                 SettingsDataStore.setAutoBackupSettings { it.copy(retentionCount = count) }
                 val settings = SettingsDataStore.autoBackupSettings()
                 BackupHistoryStore.prune(appContext, settings.retentionCount)
+                // 改份数时同步淘汰 SAF 目录，否则那边仍会无限增长。
+                settings.safDirectoryUri?.let { uri ->
+                    runCatching {
+                        BackupHistoryStore.pruneSaf(appContext, uri, settings.retentionCount)
+                    }.onFailure {
+                        AndroidAgentLogger.warn(
+                            "Agent auto backup SAF prune on retention failed: type=${it.javaClass.simpleName}",
+                        )
+                    }
+                }
             }
             refresh()
         }
@@ -108,8 +120,16 @@ internal class AutoBackupStore(
         }
     }
 
+    /** 立即备份一次：不等待下一个计划点，用于临时造一份快照。 */
+    fun runNow() {
+        AutoBackupWorker.enqueue(appContext, reason = "manual")
+        refresh()
+    }
+
+    /** 亮给外部（导入流程）用的忙标志，避免导入期间还能再点记录或拨开关。 */
     fun setBusy(busy: Boolean) {
         state = state.copy(busy = busy)
+        if (!busy) refresh()
     }
 
     fun exactAlarmSettingsIntent(): Intent =
@@ -120,4 +140,12 @@ internal class AutoBackupStore(
         }
 
     fun retentionOptions(): List<Int> = listOf(3, 5, 7, 10, 14, 21, 30)
+
+    /** 从系统设置页返回后重新对账：用户可能刚授予或撤销了精确闹钟权限。 */
+    fun reconcile() {
+        scope.launch {
+            AutoBackupBootstrap.reconcile(appContext)
+            refresh()
+        }
+    }
 }

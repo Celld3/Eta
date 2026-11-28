@@ -14,10 +14,10 @@ import io.github.mangi.eta.data.repository.backup.EtaBackupRepository
 import kotlinx.coroutines.CancellationException
 
 /**
- * 自动备份的执行者：导出 → 原子落盘 → FIFO 淘汰 → SAF 双写 → 重排下一次闹钟。
+ * 自动备份的执行者：导出 → 原子落盘 → 私有目录淘汰 → SAF 双写 → SAF 淘汰 → 重排下一次闹钟。
  *
  * 任何失败都只记录状态并返回 success，避免 WorkManager 反复重试造成写盘风暴；
- * 需要重试的情形由下一次定时触发覆盖。
+ * 需要重试的情形由下一次定时触发或 [AutoBackupScheduler.overdueSlot] 的补跑覆盖。
  */
 internal class AutoBackupWorker(
     appContext: Context,
@@ -44,7 +44,13 @@ internal class AutoBackupWorker(
             }
             backupName = file.name
             BackupHistoryStore.prune(applicationContext, settings.retentionCount)
-            AutoBackupScheduler.recordResult(applicationContext, succeeded = true, failureKind = null, backupName = backupName)
+            // 先落“成功”再双写 SAF：私有目录那份已经完整，SAF 失败不该回滚这个事实。
+            AutoBackupScheduler.recordResult(
+                applicationContext,
+                succeeded = true,
+                failureKind = null,
+                backupName = backupName,
+            )
             syncToSaf(file, settings)
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -60,7 +66,8 @@ internal class AutoBackupWorker(
             )
         } finally {
             // 无论成败都要排下一次，否则一次失败就会永久停摆。
-            runCatching { AutoBackupScheduler.schedule(applicationContext) }
+            // afterRun=true 让当天已消费的计划点直接跳到明天，避免一天两份。
+            runCatching { AutoBackupScheduler.schedule(applicationContext, afterRun = true) }
         }
         return Result.success()
     }
@@ -72,12 +79,23 @@ internal class AutoBackupWorker(
         val directoryUri = settings.safDirectoryUri ?: return
         try {
             BackupHistoryStore.copyToSaf(applicationContext, file, directoryUri)
-            AutoBackupScheduler.recordSafResult(applicationContext, null)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (failure: Throwable) {
             // SAF 失败不影响私有目录那份，只记录状态供设置页提示。
             AutoBackupScheduler.recordSafResult(applicationContext, SafWriteFailure.from(failure))
+            return
+        }
+        AutoBackupScheduler.recordSafResult(applicationContext, null)
+        // 写入成功后按同一份数淘汰 SAF 目录：否则这份目录会无限增长。
+        try {
+            BackupHistoryStore.pruneSaf(applicationContext, directoryUri, settings.retentionCount)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Throwable) {
+            AndroidAgentLogger.warn(
+                "Agent auto backup SAF prune failed: type=${failure.safeLogType()}",
+            )
         }
     }
 

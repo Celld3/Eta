@@ -520,22 +520,27 @@ internal class AgentAppState(
                     reloaded = true
                     summary
                 } catch (failure: Throwable) {
+                    // 已提交就必须把重载做完：内存与库不一致会让后续保存覆盖掉刚导入的数据。
+                    // 用 NonCancellable 保护，避免用户退出页面把重载砍在半路。
                     if (imported && !reloaded) {
                         try {
                             withContext(NonCancellable) { reloadConversationsAfterBackup() }
                             reloaded = true
                         } catch (reloadFailure: Throwable) {
                             failure.addSuppressed(reloadFailure)
+                            AndroidAgentLogger.error(
+                                "Agent backup reload after import failed: type=${reloadFailure.safeLogType()}",
+                            )
                         }
                     }
                     throw failure
                 }
             }
         } finally {
-            // 导入已提交但重载失败时内存仍是旧状态，继续暂停，避免覆盖导入结果；重启后按库内数据加载。
-            if (!imported || reloaded) {
-                synchronized(persistenceLock) { persistencePaused = false }
-            }
+            // 无论导入是否提交、重载是否成功，都必须解除暂停。
+            // 旧实现在“已提交但重载被取消”时把 persistencePaused 永久留成 true，
+            // 之后每次导入都撞“请等待会话保存完成”，只能杀进程才能恢复。
+            synchronized(persistenceLock) { persistencePaused = false }
             // 仅提交前失败才回写旧内存；提交后的清理失败或取消仍以导入数据为准。
             if (!imported) withContext(Dispatchers.Main.immediate + NonCancellable) { persistConversations() }
         }

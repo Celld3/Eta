@@ -7,7 +7,7 @@ import io.github.mangi.eta.agent.terminal.TerminalRuntime
 import io.github.mangi.eta.agent.voice.asr.SpeechOssUpload
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
-import io.github.mangi.eta.data.backup.AutoBackupScheduler
+import io.github.mangi.eta.data.backup.AutoBackupBootstrap
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
@@ -88,14 +88,10 @@ internal class AppContainer(
                 AndroidAgentLogger.warn("Eta speech cleanup unavailable: type=${error.javaClass.simpleName}")
             }
         }
-        // 闹钟队列不跨重启与崩溃保留，每次启动重建一次，保证自动备份不会静默停摆。
+        // 闹钟队列不跨重启与崩溃保留，每次启动重建一次并补跑错过的计划点，
+        // 保证自动备份不会静默停摆（ROM 吞闹钟、被强停后队列清空都能恢复）。
         applicationScope.launch {
-            runCatching { AutoBackupScheduler.schedule(appContext) }
-                .onFailure { throwable ->
-                    AndroidAgentLogger.warn(
-                        "Agent auto backup schedule failed: type=${throwable.safeLogType()}",
-                    )
-                }
+            AutoBackupBootstrap.reconcile(appContext)
         }
         applicationScope.launch {
             linuxEnvironmentSettingsRepository.initialize(appContext)

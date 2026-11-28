@@ -1369,6 +1369,8 @@
     <string name="data_backup_auto_last_success">上次備份：%1$s 成功</string>
     <string name="data_backup_auto_last_failure">上次備份：%1$s 失敗（%2$s）</string>
     <string name="data_backup_auto_never">尚未執行</string>
+    <string name="data_backup_auto_run_now">立即備份</string>
+    <string name="data_backup_auto_run_now_summary">背景執行一次，不改變現有計畫</string>
     <string name="data_backup_auto_saf_failure">複製到資料夾失敗：%1$s（%2$s）</string>
     <string name="data_backup_history_title">自動備份記錄</string>
     <string name="data_backup_history_empty">還沒有自動備份</string>

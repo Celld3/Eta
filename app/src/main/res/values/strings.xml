@@ -1509,6 +1509,12 @@
     <string name="data_backup_auto_restore_confirm_summary">Conversations, memory, and skills will be replaced by this backup. Skills not in the backup are kept.</string>
     <string name="data_backup_auto_delete_confirm_title">Delete this backup?</string>
     <string name="data_backup_auto_delete_confirm_summary">This only removes the file from app storage and cannot be undone.</string>
+  <string name="data_backup_history_delete_confirm_title">Delete this backup?</string>
+  <string name="data_backup_history_delete_confirm_summary">Removes the copy from app storage and from the extra copy folder. %1$s cannot be recovered.</string>
+  <string name="data_backup_history_deleted">Backup deleted</string>
+  <string name="data_backup_history_deleted_both">Deleted from app storage and the extra copy folder</string>
+  <string name="data_backup_history_deleted_local_kept_copy">Deleted from app storage; the extra copy folder still has a copy</string>
+  <string name="data_backup_history_delete_failed">Could not delete this backup</string>
     <string name="chat_shared_content_source">From %1$s</string>
   <string name="speech_local_model_title">Model</string>
   <string name="speech_local_model_download">Download model</string>

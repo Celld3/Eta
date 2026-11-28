@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.mangi.eta.core.AndroidAgentLogger
+import io.github.mangi.eta.data.backup.AutoBackupFile
 import io.github.mangi.eta.data.backup.AutoBackupScheduler
 import io.github.mangi.eta.data.backup.AutoBackupWorker
 import io.github.mangi.eta.data.backup.BackupHistoryStore
@@ -123,6 +124,59 @@ internal class AutoBackupStore(
         state = state.copy(busy = busy)
         if (!busy) refresh()
     }
+
+    /**
+     * 手动删除一份自动备份：私有目录那份必删，额外副本目录里有同名文件时一起删。
+     *
+     * 两边成败分别统计，任一失败都不回滚另一边，最终通过 [AutoBackupStore.DeleteResult] 交给界面提示。
+     */
+    fun delete(entry: AutoBackupFile) {
+        scope.launch {
+            val settings = withContext(Dispatchers.IO) { SettingsDataStore.autoBackupSettings() }
+            state = state.copy(busy = true)
+            val localDeleted = withContext(Dispatchers.IO) {
+                runCatching { BackupHistoryStore.delete(appContext, entry.name) }.getOrDefault(false)
+            }
+            val safDeleted = settings.safDirectoryUri?.let { uri ->
+                withContext(Dispatchers.IO) {
+                    runCatching { BackupHistoryStore.deleteSaf(appContext, uri, entry.name) }
+                        .getOrDefault(false)
+                }
+            }
+            if (!localDeleted) {
+                AndroidAgentLogger.warn("Agent auto backup delete failed: type=IOException")
+            }
+            // 删掉的正好是上次记录里那份时，清掉名字，避免设置页指向已不存在的文件。
+            if (settings.lastBackupName == entry.name) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        SettingsDataStore.setAutoBackupSettings { it.copy(lastBackupName = null) }
+                    }
+                }
+            }
+            state = state.copy(busy = false)
+            refresh()
+            deleteResult = DeleteResult(
+                name = entry.name,
+                localDeleted = localDeleted,
+                safDeleted = safDeleted,
+            )
+        }
+    }
+
+    /** 最近一次手动删除的结果，界面读走提示后置空。 */
+    var deleteResult by mutableStateOf<DeleteResult?>(null)
+        private set
+
+    fun consumeDeleteResult() {
+        deleteResult = null
+    }
+
+    internal data class DeleteResult(
+        val name: String,
+        val localDeleted: Boolean,
+        val safDeleted: Boolean,
+    )
 
     fun exactAlarmSettingsIntent(): Intent =
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {

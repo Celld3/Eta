@@ -112,6 +112,33 @@ internal object BackupHistoryStore {
             .toList()
     }
 
+    /**
+     * 删除私有目录里的一份自动备份。
+     *
+     * 只接受本目录下、命名符合自动备份规则的文件，避免路径拼接逃逸。
+     */
+    suspend fun delete(context: Context, name: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAutoBackupName(name)) return@withContext false
+        val directory = directory(context)
+        val target = File(directory, name)
+        if (target.parentFile?.canonicalPath != directory.canonicalPath) return@withContext false
+        if (!target.isFile) return@withContext false
+        target.delete()
+    }
+
+    /**
+     * 删除 SAF 目录里同名的一份自动备份。
+     *
+     * 目录未设置或授权失效时静默返回 false；与私有目录各自独立删除，一边失败不影响另一边。
+     */
+    suspend fun deleteSaf(context: Context, directoryUri: String, name: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isAutoBackupName(name)) return@withContext false
+            runCatching {
+                DocumentFileCompat.fromTreeUri(context, Uri.parse(directoryUri))?.delete(name) ?: false
+            }.getOrDefault(false)
+        }
+
     /** FIFO 淘汰私有目录：保留最新 [retention] 份，删除更旧的。返回被删除的文件名。 */
     suspend fun prune(context: Context, retention: Int): List<String> = withContext(Dispatchers.IO) {
         val extra = list(context).drop(retention.coerceAtLeast(MIN_KEEP))
@@ -249,6 +276,12 @@ internal class SafDirectory(
     fun delete(uri: Uri): Boolean = runCatching {
         resolver.delete(uri, null, null) > 0
     }.getOrDefault(false)
+
+    /** 按显示名删除一份条目；找不到时返回 false。 */
+    fun delete(name: String): Boolean {
+        val uri = findByDisplayName(name) ?: return false
+        return delete(uri)
+    }
 
     private fun findByDisplayName(name: String): Uri? {
         val treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri)

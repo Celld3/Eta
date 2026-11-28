@@ -5,7 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Storage
@@ -18,9 +20,12 @@ import io.github.mangi.eta.data.backup.AutoBackupFile
 import io.github.mangi.eta.data.model.AutoBackupSettings
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,6 +54,7 @@ internal fun AutoBackupSection(
     onRequestExactAlarm: () -> Unit,
     onRunNow: () -> Unit,
     onSelectHistory: (AutoBackupFile) -> Unit,
+    onDeleteHistory: (AutoBackupFile) -> Unit,
 ) {
     val directoryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -146,7 +152,7 @@ internal fun AutoBackupSection(
             if (state.history.isEmpty()) {
                 BasicComponent(title = stringResource(R.string.data_backup_history_empty))
             } else {
-                state.history.forEachIndexed { index, entry ->
+                state.history.forEach { entry ->
                     ArrowPreference(
                         title = stringResource(
                             R.string.data_backup_history_entry,
@@ -154,6 +160,19 @@ internal fun AutoBackupSection(
                             formatSize(entry.sizeBytes),
                         ),
                         enabled = !state.busy,
+                        endActions = {
+                            IconButton(
+                                onClick = { onDeleteHistory(entry) },
+                                enabled = !state.busy,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = stringResource(R.string.data_backup_history_delete),
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                )
+                            }
+                        },
                         onClick = { onSelectHistory(entry) },
                     )
                 }

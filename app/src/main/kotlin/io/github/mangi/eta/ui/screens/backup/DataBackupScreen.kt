@@ -53,7 +53,20 @@ internal fun DataBackupScreen(
     val autoBackup = remember { AutoBackupStore(context, scope) }
     // 记录条目与手动导入走同一个确认框：导入会整库清空重建，不能一点就覆盖。
     var pendingHistory by remember { mutableStateOf<AutoBackupFile?>(null) }
+    // 删除单独一个确认框：删除不可撤销，且和恢复是完全不同的风险。
+    var pendingDelete by remember { mutableStateOf<AutoBackupFile?>(null) }
     LaunchedEffect(Unit) { autoBackup.refresh() }
+    LaunchedEffect(autoBackup.deleteResult) {
+        val result = autoBackup.deleteResult ?: return@LaunchedEffect
+        val message = when {
+            result.localDeleted && result.safDeleted == true -> R.string.data_backup_history_deleted_both
+            result.localDeleted && result.safDeleted == false -> R.string.data_backup_history_deleted_local_kept_copy
+            result.localDeleted -> R.string.data_backup_history_deleted
+            else -> R.string.data_backup_history_delete_failed
+        }
+        Toast.makeText(context, context.getString(message), Toast.LENGTH_SHORT).show()
+        autoBackup.consumeDeleteResult()
+    }
 
     fun showFailure(throwable: Throwable) {
         if (throwable is CancellationException) throw throwable
@@ -171,6 +184,31 @@ internal fun DataBackupScreen(
                     onConfirm = onConfirmImport,
                 )
             }
+            GlassDialog(
+                show = pendingDelete != null,
+                backdrop = currentGlassOverlayBackdrop(),
+                title = stringResource(R.string.data_backup_history_delete_confirm_title),
+                summary = pendingDelete?.let {
+                    stringResource(
+                        R.string.data_backup_history_delete_confirm_summary,
+                        formatDateTime(it.createdAt),
+                    )
+                } ?: "",
+                onDismissRequest = { if (!autoBackup.state.busy) pendingDelete = null },
+            ) {
+                DialogActions(
+                    confirmText = stringResource(R.string.data_backup_history_delete),
+                    destructive = true,
+                    cancelEnabled = !autoBackup.state.busy,
+                    confirmEnabled = !autoBackup.state.busy,
+                    onCancel = { pendingDelete = null },
+                    onConfirm = {
+                        val target = pendingDelete
+                        pendingDelete = null
+                        if (target != null) autoBackup.delete(target)
+                    },
+                )
+            }
         },
     ) {
         item(key = "warning") {
@@ -234,6 +272,7 @@ internal fun DataBackupScreen(
                     // 不直接导入：历史条目也是一份完整备份，点错就会整库覆盖。
                     pendingHistory = entry
                 },
+                onDeleteHistory = { entry -> pendingDelete = entry },
             )
         }
     }

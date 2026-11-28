@@ -1490,6 +1490,12 @@
     <string name="data_backup_auto_restore_confirm_summary">会话、记忆与技能会被这份备份替换；备份里没有的技能会保留。</string>
     <string name="data_backup_auto_delete_confirm_title">删除这份备份？</string>
     <string name="data_backup_auto_delete_confirm_summary">只删除应用内的这个文件，删除后无法撤销。</string>
+  <string name="data_backup_history_delete_confirm_title">删除这份备份？</string>
+  <string name="data_backup_history_delete_confirm_summary">会同时删掉应用内的文件和额外副本位置里的同名文件，%1$s 之后无法恢复。</string>
+  <string name="data_backup_history_deleted">已删除这份备份</string>
+  <string name="data_backup_history_deleted_both">已从应用内和额外副本位置删除</string>
+  <string name="data_backup_history_deleted_local_kept_copy">已从应用内删除，额外副本位置里还留着同名文件</string>
+  <string name="data_backup_history_delete_failed">删除失败</string>
     <string name="chat_shared_content_source">来自 %1$s</string>
   <string name="speech_local_model_title">模型</string>
   <string name="speech_local_model_download">下载模型</string>

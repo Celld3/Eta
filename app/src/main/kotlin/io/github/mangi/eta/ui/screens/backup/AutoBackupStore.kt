@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.mangi.eta.core.AndroidAgentLogger
-import io.github.mangi.eta.data.backup.AutoBackupBootstrap
 import io.github.mangi.eta.data.backup.AutoBackupScheduler
 import io.github.mangi.eta.data.backup.AutoBackupWorker
 import io.github.mangi.eta.data.backup.BackupHistoryStore
@@ -113,13 +112,6 @@ internal class AutoBackupStore(
         }
     }
 
-    fun removeHistory(entryName: String) {
-        scope.launch {
-            withContext(Dispatchers.IO) { BackupHistoryStore.delete(appContext, entryName) }
-            refresh()
-        }
-    }
-
     /** 立即备份一次：不等待下一个计划点，用于临时造一份快照。 */
     fun runNow() {
         AutoBackupWorker.enqueue(appContext, reason = "manual")
@@ -138,14 +130,4 @@ internal class AutoBackupStore(
         } else {
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:${appContext.packageName}"))
         }
-
-    fun retentionOptions(): List<Int> = listOf(3, 5, 7, 10, 14, 21, 30)
-
-    /** 从系统设置页返回后重新对账：用户可能刚授予或撤销了精确闹钟权限。 */
-    fun reconcile() {
-        scope.launch {
-            AutoBackupBootstrap.reconcile(appContext)
-            refresh()
-        }
-    }
 }

@@ -166,7 +166,9 @@ internal fun AutoBackupSection(
 private fun describeLastRun(settings: AutoBackupSettings): String {
     val at = settings.lastRunAt ?: return stringResource(R.string.data_backup_auto_never)
     return when (settings.lastRunSucceeded) {
-        true -> stringResource(R.string.data_backup_auto_last_success, formatDateTime(at))
+        true -> settings.lastBackupName?.let { name ->
+            stringResource(R.string.data_backup_auto_last_success_named, formatDateTime(at), name)
+        } ?: stringResource(R.string.data_backup_auto_last_success, formatDateTime(at))
         false -> stringResource(
             R.string.data_backup_auto_last_failure,
             formatDateTime(at),

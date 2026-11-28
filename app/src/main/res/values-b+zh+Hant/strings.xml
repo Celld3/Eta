@@ -1367,6 +1367,7 @@
     <string name="data_backup_auto_next">下次備份</string>
     <string name="data_backup_auto_next_value">%1$s</string>
     <string name="data_backup_auto_last_success">上次備份：%1$s 成功</string>
+    <string name="data_backup_auto_last_success_named">上次備份：%1$s（%2$s）</string>
     <string name="data_backup_auto_last_failure">上次備份：%1$s 失敗（%2$s）</string>
     <string name="data_backup_auto_never">尚未執行</string>
     <string name="data_backup_auto_run_now">立即備份</string>

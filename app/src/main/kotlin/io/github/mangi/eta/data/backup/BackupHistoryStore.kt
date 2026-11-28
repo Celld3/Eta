@@ -112,15 +112,6 @@ internal object BackupHistoryStore {
             .toList()
     }
 
-    suspend fun delete(context: Context, name: String): Boolean = withContext(Dispatchers.IO) {
-        val directory = directory(context)
-        val target = File(directory, name)
-        // 只允许删除本目录下的自动备份文件，避免路径拼接逃逸。
-        if (target.parentFile?.canonicalPath != directory.canonicalPath) return@withContext false
-        if (!target.isFile) return@withContext false
-        target.delete()
-    }
-
     /** FIFO 淘汰私有目录：保留最新 [retention] 份，删除更旧的。返回被删除的文件名。 */
     suspend fun prune(context: Context, retention: Int): List<String> = withContext(Dispatchers.IO) {
         val extra = list(context).drop(retention.coerceAtLeast(MIN_KEEP))

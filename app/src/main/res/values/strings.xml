@@ -1489,6 +1489,7 @@
     <string name="data_backup_auto_next">Next backup</string>
     <string name="data_backup_auto_next_value">%1$s</string>
     <string name="data_backup_auto_last_success">Last backup: succeeded at %1$s</string>
+    <string name="data_backup_auto_last_success_named">Last backup: %2$s at %1$s</string>
     <string name="data_backup_auto_last_failure">Last backup failed at %1$s (%2$s)</string>
     <string name="data_backup_auto_never">Not run yet</string>
     <string name="data_backup_auto_run_now">Back up now</string>

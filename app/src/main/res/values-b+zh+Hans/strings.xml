@@ -1470,6 +1470,7 @@
     <string name="data_backup_auto_next">下次备份</string>
     <string name="data_backup_auto_next_value">%1$s</string>
     <string name="data_backup_auto_last_success">上次备份：%1$s 成功</string>
+    <string name="data_backup_auto_last_success_named">上次备份：%1$s（%2$s）</string>
     <string name="data_backup_auto_last_failure">上次备份：%1$s 失败（%2$s）</string>
     <string name="data_backup_auto_never">尚未运行</string>
     <string name="data_backup_auto_run_now">立即备份</string>

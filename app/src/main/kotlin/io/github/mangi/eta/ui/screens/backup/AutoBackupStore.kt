@@ -175,7 +175,8 @@ internal class AutoBackupStore(
     internal data class DeleteResult(
         val name: String,
         val localDeleted: Boolean,
-        val safDeleted: Boolean,
+        /** null 表示没配置额外副本目录，不需要提示那一边的结果。 */
+        val safDeleted: Boolean?,
     )
 
     fun exactAlarmSettingsIntent(): Intent =
